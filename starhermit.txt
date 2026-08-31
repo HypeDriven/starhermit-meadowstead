@@ -1,0 +1,3 @@
+name=Meadowstead
+launch=index.html
+server=server.js

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meadowstead</title>
+<meta name="description" content="Meadowstead — plant, tend, harvest, craft, and fulfill orders while restoring a small rural homestead.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#playfield">Skip to playfield</a>
+<div id="app" data-screen="boot">
+
+  <!-- ============ HUD status bar ============ -->
+  <header id="statusbar" role="banner">
+    <button id="btn-drawer-left" class="chip btn drawer-toggle" aria-label="Open objective and orders panel">📋</button>
+    <span id="sb-season" class="chip">Spring</span>
+    <span id="sb-tick" class="chip">Time 0/0</span>
+    <span id="sb-coins" class="chip">🪙 0</span>
+    <span id="sb-score" class="chip">Score 0</span>
+    <span id="sb-mode" class="chip">—</span>
+    <button id="btn-drawer-right" class="chip btn drawer-toggle" aria-label="Open inventory and actions panel">🎒</button>
+    <button id="btn-pause" class="chip btn" aria-label="Pause (P)">⏸ Pause</button>
+  </header>
+
+  <!-- ============ Left rail: objective & orders ============ -->
+  <aside id="rail-left" aria-label="Objective and orders">
+    <section class="panel" aria-labelledby="obj-h">
+      <h2 id="obj-h">Objective</h2>
+      <p id="objective-text" class="objective">Fulfill orders to restore the homestead.</p>
+      <progress id="objective-progress" value="0" max="100" aria-label="Order progress"></progress>
+    </section>
+    <section class="panel" aria-labelledby="orders-h">
+      <h2 id="orders-h">Orders</h2>
+      <ul id="orders-list" class="orders"></ul>
+    </section>
+  </aside>
+
+  <!-- ============ Playfield ============ -->
+  <main id="playfield" role="main" aria-label="Meadowstead playfield">
+    <canvas id="gl" aria-hidden="true"></canvas>
+    <div id="webgl-fallback" hidden role="alert">
+      <p>3D rendering is unavailable in this browser. The full game remains playable with the field controls below.</p>
+    </div>
+    <!-- Accessibility mirror: DOM equivalent of the canvas board -->
+    <div id="board-mirror" role="group" aria-label="Farm plots"></div>
+    <div id="hint-banner" role="status" aria-live="polite"></div>
+    <div id="caption-line" aria-live="polite" class="caption"></div>
+  </main>
+
+  <!-- ============ Right rail: inventory, actions, social ============ -->
+  <aside id="rail-right" aria-label="Inventory and actions">
+    <section class="panel" aria-labelledby="inv-h">
+      <h2 id="inv-h">Inventory</h2>
+      <ul id="inventory-list" class="inventory"></ul>
+    </section>
+    <section class="panel" aria-labelledby="craft-h">
+      <h2 id="craft-h">Craft</h2>
+      <div id="craft-list"></div>
+    </section>
+    <section class="panel" aria-labelledby="social-h">
+      <h2 id="social-h">Scores</h2>
+      <button id="btn-leaderboard" class="btn wide">Leaderboards</button>
+      <button id="btn-friends" class="btn wide">Friends</button>
+    </section>
+  </aside>
+
+  <!-- ============ Bottom tool tray ============ -->
+  <nav id="tooltray" aria-label="Tools">
+    <button class="tool btn" data-tool="plant" data-crop="turnip" aria-keyshortcuts="1">🌱 Turnip <kbd>1</kbd></button>
+    <button class="tool btn" data-tool="plant" data-crop="carrot" aria-keyshortcuts="2">🥕 Carrot <kbd>2</kbd></button>
+    <button class="tool btn" data-tool="plant" data-crop="pumpkin" aria-keyshortcuts="3">🎃 Pumpkin <kbd>3</kbd></button>
+    <button class="tool btn" data-tool="water" aria-keyshortcuts="W">💧 Water <kbd>W</kbd></button>
+    <button class="tool btn" data-tool="harvest" aria-keyshortcuts="H">🧺 Harvest <kbd>H</kbd></button>
+    <button class="tool btn" data-tool="wait" aria-keyshortcuts="Space">⏳ Wait <kbd>␣</kbd></button>
+    <button id="btn-undo" class="tool btn" aria-keyshortcuts="U">↩ Undo <kbd>U</kbd></button>
+    <button id="btn-hint" class="tool btn" aria-keyshortcuts="?">💡 Hint <kbd>?</kbd></button>
+  </nav>
+
+  <!-- ============ Screens ============ -->
+  <div id="screens">
+
+    <section id="screen-title" class="screen" aria-labelledby="title-h">
+      <h1 id="title-h">Meadowstead</h1>
+      <p class="tagline">Restore a gentle homestead through the seasons.</p>
+      <button id="btn-play" class="btn primary big">▶ Play</button>
+      <div class="title-row">
+        <button id="btn-daily" class="btn">📅 Daily Challenge<br><small id="daily-countdown"></small></button>
+        <button id="btn-journey" class="btn">🗺 Journey<br><small id="journey-progress-label"></small></button>
+        <button id="btn-profile" class="btn">👤 Profile</button>
+      </div>
+      <div class="title-row">
+        <button id="btn-help-title" class="btn">❓ Help</button>
+        <button id="btn-settings-title" class="btn">⚙ Settings</button>
+      </div>
+    </section>
+
+    <section id="screen-modes" class="screen" aria-labelledby="modes-h">
+      <h1 id="modes-h">Choose a mode</h1>
+      <div class="mode-grid">
+        <button class="btn mode" data-mode="learn">🎓 <b>Learn</b><small>Interactive lessons, one rule at a time.</small></button>
+        <button class="btn mode" data-mode="journey">🗺 <b>Journey</b><small>40 authored stages with mastery gates.</small></button>
+        <button class="btn mode" data-mode="daily">📅 <b>Daily</b><small>One shared seed per UTC day. Ranked.</small></button>
+        <button class="btn mode" data-mode="practice">🌿 <b>Practice</b><small>Selectable difficulty, undo, unranked.</small></button>
+        <button class="btn mode" data-mode="challenge">🏆 <b>Challenge</b><small>Move limits and restricted tools.</small></button>
+        <button class="btn mode" data-mode="score">📈 <b>Score Chase</b><small>Chase the global board on a fixed seed.</small></button>
+      </div>
+      <button class="btn back" data-back>← Back</button>
+    </section>
+
+    <section id="screen-setup" class="screen" aria-labelledby="setup-h">
+      <h1 id="setup-h">Session setup</h1>
+      <div id="setup-details"></div>
+      <div id="setup-options"></div>
+      <div class="row">
+        <button id="btn-start-session" class="btn primary">Start</button>
+        <button class="btn back" data-back>← Back</button>
+      </div>
+    </section>
+
+    <section id="screen-results" class="screen" aria-labelledby="results-h">
+      <h1 id="results-h">Results</h1>
+      <p id="results-headline" class="headline"></p>
+      <table id="score-breakdown" aria-label="Score breakdown">
+        <tbody></tbody>
+        <tfoot><tr><th scope="row">Total</th><td id="score-total"></td></tr></tfoot>
+      </table>
+      <div id="results-extra"></div>
+      <div id="achievements-earned" aria-live="polite"></div>
+      <div class="row">
+        <button id="btn-retry" class="btn primary">↻ Retry</button>
+        <button id="btn-next" class="btn">Next →</button>
+        <button id="btn-results-home" class="btn">Home</button>
+      </div>
+    </section>
+
+    <section id="screen-pause" class="screen overlay" aria-labelledby="pause-h">
+      <h1 id="pause-h">Paused</h1>
+      <button id="btn-resume" class="btn primary big">▶ Resume</button>
+      <div class="row wrap">
+        <button id="btn-settings-pause" class="btn">⚙ Settings</button>
+        <button id="btn-help-pause" class="btn">❓ Help</button>
+        <button id="btn-restart-pause" class="btn">↻ Restart</button>
+        <button id="btn-leave" class="btn danger">🚪 Leave</button>
+      </div>
+    </section>
+
+    <section id="screen-settings" class="screen overlay" aria-labelledby="settings-h">
+      <h1 id="settings-h">Settings</h1>
+      <div id="settings-form" class="settings-grid"></div>
+      <button class="btn back" data-back>← Done</button>
+    </section>
+
+    <section id="screen-help" class="screen overlay" aria-labelledby="help-h">
+      <h1 id="help-h">How to play</h1>
+      <div id="help-cards" class="help-cards"></div>
+      <button class="btn back" data-back>← Done</button>
+    </section>
+
+    <section id="screen-leaderboard" class="screen overlay" aria-labelledby="lb-h">
+      <h1 id="lb-h">Leaderboards</h1>
+      <div class="row">
+        <button class="btn lb-tab" data-board="global">Global</button>
+        <button class="btn lb-tab" data-board="daily">Daily</button>
+        <button class="btn lb-tab" data-board="friends">Friends</button>
+      </div>
+      <ol id="lb-list" class="lb-list"></ol>
+      <p id="lb-note" class="fine"></p>
+      <button class="btn back" data-back>← Done</button>
+    </section>
+
+    <section id="screen-friends" class="screen overlay" aria-labelledby="friends-h">
+      <h1 id="friends-h">Friends</h1>
+      <p class="fine">Compare scores with friends on shared seeds. Invite by sharing today's daily seed.</p>
+      <div class="row">
+        <input id="friend-name" type="text" maxlength="24" placeholder="Friend display name" aria-label="Friend display name">
+        <button id="btn-add-friend" class="btn">Add</button>
+      </div>
+      <ul id="friends-list" class="friends-list"></ul>
+      <button id="btn-share-seed" class="btn wide">🔗 Copy today's challenge seed</button>
+      <button class="btn back" data-back>← Done</button>
+    </section>
+
+    <section id="screen-profile" class="screen overlay" aria-labelledby="profile-h">
+      <h1 id="profile-h">Profile</h1>
+      <div id="profile-summary"></div>
+      <section aria-labelledby="ach-h"><h2 id="ach-h">Achievements</h2><ul id="achievements-list"></ul></section>
+      <section aria-labelledby="mastery-h"><h2 id="mastery-h">Mastery track</h2><div id="mastery-track"></div></section>
+      <button class="btn back" data-back>← Done</button>
+    </section>
+
+    <section id="screen-away" class="screen overlay" aria-labelledby="away-h">
+      <h1 id="away-h">Welcome back</h1>
+      <p id="away-summary"></p>
+      <button id="btn-away-continue" class="btn primary">Continue</button>
+    </section>
+
+  </div>
+
+  <!-- Tutorial bubble -->
+  <div id="tutorial-bubble" hidden role="dialog" aria-live="polite" aria-label="Tutorial">
+    <p id="tutorial-text"></p>
+    <button id="btn-tutorial-skip" class="btn">Skip tutorial</button>
+  </div>
+
+  <!-- Live regions -->
+  <div id="live-objective" class="sr-only" aria-live="polite"></div>
+  <div id="live-errors" class="sr-only" aria-live="assertive"></div>
+  <div id="live-score" class="sr-only" aria-live="polite"></div>
+
+  <div id="loading" role="status" aria-label="Loading">
+    <p>Meadowstead is loading…</p>
+    <progress id="load-progress" value="0" max="100"></progress>
+  </div>
+</div>
+
+<script src="js/rules.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

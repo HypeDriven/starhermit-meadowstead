@@ -1,0 +1,74 @@
+[
+  {
+    "name": "ui-click",
+    "seconds": 1,
+    "prompt": "A short, soft UI button tap: a gentle wooden click with a quick decay, warm and muted, no reverb tail.",
+    "event": "click"
+  },
+  {
+    "name": "plant-seed",
+    "seconds": 1,
+    "prompt": "A few small seeds dropped into soft garden soil: a faint patter of tiny taps followed by a soft earthy thud.",
+    "event": "plant"
+  },
+  {
+    "name": "water-pour",
+    "seconds": 2,
+    "prompt": "Water poured from a metal watering can rose onto dry soil: a bright gentle sprinkle that fades as the soil soaks it up.",
+    "event": "water"
+  },
+  {
+    "name": "harvest-pick",
+    "seconds": 1,
+    "prompt": "A ripe vegetable pulled from the soil: a quick leafy rustle with a soft satisfying pop as the root comes free.",
+    "event": "harvest"
+  },
+  {
+    "name": "harvest-basket",
+    "seconds": 1,
+    "prompt": "Fresh produce dropped into a wicker basket: a light hollow knock of vegetables landing on woven reeds.",
+    "event": "harvest"
+  },
+  {
+    "name": "craft-tap",
+    "seconds": 2,
+    "prompt": "Assembling a small wooden craft item: two light mallet taps on wood followed by a soft squeak of parts fitting together.",
+    "event": "craft"
+  },
+  {
+    "name": "order-fulfill",
+    "seconds": 2,
+    "prompt": "A cheerful small hand-bell rung twice to signal a completed delivery, bright and warm with a short natural ring-out.",
+    "event": "fulfill"
+  },
+  {
+    "name": "crop-grown",
+    "seconds": 1,
+    "prompt": "A gentle magical shimmer as a young plant sprouts upward: soft chime-like sparkle with a hint of rustling new leaves.",
+    "event": "grown"
+  },
+  {
+    "name": "crop-wither",
+    "seconds": 2,
+    "prompt": "Dry leaves crackling and wilting: a brittle papery rustle drooping downward, ending in a faint dusty sigh.",
+    "event": "wither"
+  },
+  {
+    "name": "action-denied",
+    "seconds": 1,
+    "prompt": "A soft dull wooden thunk, like knuckles knocking once on a closed door: muted negative feedback, low and short.",
+    "event": "invalid"
+  },
+  {
+    "name": "pause-menu",
+    "seconds": 1,
+    "prompt": "A single soft marimba note struck gently, round and calm, with a short wooden resonance.",
+    "event": "pause"
+  },
+  {
+    "name": "session-complete",
+    "seconds": 3,
+    "prompt": "A warm ascending bell arpeggio played on small tuned bells, celebratory but gentle, ending with a soft sustained chime.",
+    "event": "terminal"
+  }
+]

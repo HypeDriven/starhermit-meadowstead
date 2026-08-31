@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/rules.test.js"
+  },
+  "dependencies": {
+    "@types/node": "^26.3.0",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.62.1",
+    "three": "^0.185.1",
+    "typescript": "^7.0.2"
+  }
+}
