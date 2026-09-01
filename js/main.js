@@ -1,5 +1,5 @@
 /* Meadowstead — bootstrap, session, UI, input, persistence, platform adapter. */
-import * as THREE from '../node_modules/three/build/three.module.js';
+import * as THREE from '../vendor/three.module.min.js?v=production-qa-1';
 
 const R = window.MeadowRules;
 const Audio = window.MeadowAudio;
