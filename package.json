@@ -1,7 +1,7 @@
 {
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/rules.test.js"
+    "test": "node --test tests/rules.test.js"
   },
   "dependencies": {
     "@types/node": "^26.3.0",
