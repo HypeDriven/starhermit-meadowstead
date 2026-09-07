@@ -184,7 +184,11 @@ kbd { font-size: 0.75em; opacity: 0.7; }
   #app { gap: 4px; padding: calc(4px + var(--sat)) calc(4px + var(--sar)) calc(4px + var(--sab)) calc(4px + var(--sal)); }
   #tooltray .btn { flex: 1 1 30%; padding: 6px 4px; font-size: 0.85em; }
   #tooltray kbd { display: none; }
-  #board-mirror { display: none; }
+  /* The mirror is the semantic control layer, so it stays available on phones —
+     compacted rather than hidden, otherwise plots are canvas-only here. */
+  #board-mirror { max-width: 216px; gap: 3px; opacity: 0.88; }
+  #board-mirror button { font-size: 0.95em; padding: 0; }
+  #board-mirror button .sub { font-size: 0.6em; }
 }
 
 /* Landscape mobile: narrow status rail */

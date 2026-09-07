@@ -147,9 +147,13 @@ const session = {
     const res = R.apply(this.state, cmd);
     if (!res.ok) {
       this.state = res.state; // invalid-action counter advances
+      // The rejected command still mutated state (invalidActions), so it must stay
+      // in the replay log and the snapshot or the authoritative hashes diverge.
+      if (res.reason !== 'duplicate-command' && res.reason !== 'missing-command-id') this.log.push(cmd);
       Audio.sfx.invalid();
       showError(cmd, res.reason);
       refreshAll();
+      saveSnapshot();
       return res;
     }
     if (undoable) this.undoStack.push(R.serialize(this.state));
@@ -172,6 +176,7 @@ const session = {
     Audio.sfx.click();
     announce('Undone. Back to time ' + this.state.tick + '.');
     refreshAll();
+    saveSnapshot(); // otherwise a reload restores the move that was just undone
   },
 
   handleEvent(ev) {
@@ -200,7 +205,9 @@ const session = {
     analytics.log('round_end', { mode: st.mode, score: st.score.total, reason: st.terminalReason });
     // Journey progression
     if (st.mode === 'journey' && st.terminalReason === 'goal-complete') {
-      if (st.configRef && st.configRef.stage === progress.journeyStage && progress.journeyStage < 40) {
+      // The stage lives on the session config; the rules engine does not copy it onto state.
+      const stage = this.config && this.config.stage;
+      if (stage === progress.journeyStage && progress.journeyStage < 40) {
         progress.journeyStage++;
         if (progress.journeyStage > 10) unlockAchievement('journey_10');
       }
@@ -218,7 +225,6 @@ const session = {
       saveProgress();
     }
     // Score submission with replay envelope
-    let submissionNote = '';
     const envelope = {
       schemaVersion: R.SCHEMA_VERSION,
       contentVersion: st.contentVersion,
@@ -235,22 +241,22 @@ const session = {
       elapsedMs: Date.now() - this.startedAt,
       sessionId: analytics.sessionId,
     };
-    if (this.ranked) {
-      if (platform.online) {
-        try {
-          const res = await platform.api('/scores', { method: 'POST', body: JSON.stringify(envelope) });
-          submissionNote = res.accepted ? 'Score validated and submitted to the ranked board.' : 'Score rejected: ' + (res.error || 'validation failed');
-        } catch (e) {
-          submissionNote = 'Score saved locally (server unavailable: ' + e.message + ').';
-          submitLocal(envelope);
-        }
-      } else {
-        submissionNote = 'Offline: score recorded on the local casual board.';
-        submitLocal(envelope);
-      }
-    }
     store.del('snapshot');
-    showResults(envelope, submissionNote);
+    // Results are shown before the (possibly slow) ranked submission; the note fills in after.
+    showResults(envelope, this.ranked ? 'Submitting score…' : '');
+    if (!this.ranked) return;
+    if (platform.online) {
+      try {
+        const res = await platform.api('/scores', { method: 'POST', body: JSON.stringify(envelope) });
+        setSubmissionNote(res.accepted ? 'Score validated and submitted to the ranked board.' : 'Score rejected: ' + (res.error || 'validation failed'));
+      } catch (e) {
+        submitLocal(envelope);
+        setSubmissionNote('Score saved locally (server unavailable: ' + e.message + ').');
+      }
+    } else {
+      submitLocal(envelope);
+      setSubmissionNote('Offline: score recorded on the local casual board.');
+    }
   },
 
   snapshotSave() {
@@ -258,6 +264,7 @@ const session = {
     store.set('snapshot', {
       schema: 1, savedAt: Date.now(), config: this.config, log: this.log,
       state: R.serialize(this.state), ranked: this.ranked,
+      elapsedMs: Math.max(0, Date.now() - this.startedAt),
     });
   },
 };
@@ -473,6 +480,10 @@ function itemName(k) {
 function updateBoardMirror() {
   const st = session.state;
   const bm = $('board-mirror');
+  // the mirror is rebuilt after every action: remember which plot button had focus
+  const focused = document.activeElement;
+  const focusIndex = focused && focused.parentElement === bm && focused.matches(':focus-visible')
+    ? Array.prototype.indexOf.call(bm.children, focused) : -1;
   bm.innerHTML = '';
   if (!st) return;
   st.plots.forEach((p, i) => {
@@ -487,15 +498,33 @@ function updateBoardMirror() {
       icon = c.ready ? '🌟' : (c.watered ? '💧' : '🌱');
     }
     b.innerHTML = icon + '<span class="sub">' + (i + 1) + '</span>';
-    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-label', label + (i === selectedPlot ? ', selected' : ''));
     if (i === selectedPlot) b.classList.add('selected');
     b.addEventListener('click', () => { selectPlot(i); activatePlot(i); });
     bm.appendChild(b);
   });
+  // keep keyboard focus on the mirror, following the current selection
+  if (focusIndex >= 0) {
+    const target = bm.children[selectedPlot] || bm.children[focusIndex];
+    if (target) target.focus();
+  }
 }
 
 /* ================= input ================= */
 let renderer = null;
+
+function drawersOpen() {
+  return $('rail-left').classList.contains('open') || $('rail-right').classList.contains('open');
+}
+function syncDrawers() {
+  $('btn-drawer-left').setAttribute('aria-expanded', String($('rail-left').classList.contains('open')));
+  $('btn-drawer-right').setAttribute('aria-expanded', String($('rail-right').classList.contains('open')));
+}
+function closeDrawers() {
+  $('rail-left').classList.remove('open');
+  $('rail-right').classList.remove('open');
+  syncDrawers();
+}
 
 function selectPlot(i) {
   selectedPlot = i;
@@ -581,11 +610,17 @@ function setupInput() {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const anyScreen = document.querySelector('#screens .screen.open');
     if (e.key === 'Escape') {
-      if (anyScreen) backScreen(); else if (session.state) pauseGame();
+      // an open drawer covers its own toggle on phones, so Escape must dismiss it first
+      if (!anyScreen && drawersOpen()) closeDrawers();
+      else if (anyScreen) backScreen();
+      else if (session.state) pauseGame();
       e.preventDefault(); return;
     }
     if (anyScreen) return;
     if (!session.state || session.state.terminalReason) return;
+    // Enter/Space on a focused control belongs to that control — handling it here
+    // as well would fire the button and a plot action from one keypress.
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('button, select, a[href]')) return;
     const st = session.state;
     const cols = 4;
     const rows = Math.ceil(st.plots.length / cols);
@@ -645,13 +680,31 @@ function setupInput() {
   });
   $('btn-undo').addEventListener('click', () => session.undo());
   $('btn-hint').addEventListener('click', showHint);
+  // Tapping outside an open drawer closes it: on phones the drawer overlays the
+  // status bar, hiding the toggle that opened it.
+  document.addEventListener('pointerdown', (e) => {
+    if (!drawersOpen()) return;
+    if (e.target.closest && e.target.closest('#rail-left, #rail-right, .drawer-toggle')) return;
+    closeDrawers();
+  });
   $('btn-drawer-left').addEventListener('click', () => {
     $('rail-left').classList.toggle('open');
     $('rail-right').classList.remove('open');
+    syncDrawers();
   });
   $('btn-drawer-right').addEventListener('click', () => {
     $('rail-right').classList.toggle('open');
     $('rail-left').classList.remove('open');
+    syncDrawers();
+  });
+  syncDrawers();
+
+  // A pointer click leaves the HUD button focused, so the next Enter/Space would
+  // re-activate it instead of playing. Drop focus after real pointer clicks only.
+  document.addEventListener('click', (e) => {
+    if (!e.detail) return; // keyboard-synthesised click: keep focus where it is
+    const btn = e.target.closest && e.target.closest('button');
+    if (btn && !btn.closest('#screens') && !btn.closest('#tutorial-bubble')) btn.blur();
   });
 }
 
@@ -684,6 +737,16 @@ function pauseGame() {
   analytics.log('pause', {});
 }
 
+function setSubmissionNote(note) {
+  const el = $('results-extra');
+  el.innerHTML = '';
+  if (!note) return;
+  const p = document.createElement('p');
+  p.className = 'fine';
+  p.textContent = note;
+  el.appendChild(p);
+}
+
 function showResults(envelope, note) {
   const st = session.state;
   const s = st.score;
@@ -700,8 +763,7 @@ function showResults(envelope, note) {
     tb.appendChild(tr);
   }
   $('score-total').textContent = s.total;
-  $('results-extra').innerHTML = '';
-  if (note) $('results-extra').innerHTML = '<p class="fine">' + note + '</p>';
+  setSubmissionNote(note);
   $('btn-next').style.display = (st.mode === 'journey' && st.terminalReason === 'goal-complete' && progress.journeyStage <= 40) ? '' : 'none';
   announceScore('Session over. ' + $('results-headline').textContent + ' Total score ' + s.total + '.');
   showScreen('screen-results');
@@ -746,7 +808,8 @@ function setupScreens() {
     session.tutorialStep = -1;
     progress.tutorialDone = true; saveProgress();
   });
-  $('btn-away-continue').addEventListener('click', () => { hideScreens(); setStatus('playing'); });
+  // clear the stack too, or backing out of a later pause re-opens "Welcome back"
+  $('btn-away-continue').addEventListener('click', () => { hideScreens(); screenStack = []; setStatus('playing'); });
 }
 
 function openSetup(mode) {
@@ -981,7 +1044,7 @@ function tryResume() {
     session.log = snap.log || [];
     session.ranked = !!snap.ranked;
     session.undoStack = [];
-    session.startedAt = Date.now();
+    session.startedAt = Date.now() - (Number.isFinite(snap.elapsedMs) ? Math.max(0, snap.elapsedMs) : 0);
     session.cmdSerial = session.log.length;
     Audio.setSeed(snap.config.seed);
     const awayMin = Math.round((Date.now() - snap.savedAt) / 60000);
@@ -1051,7 +1114,7 @@ function boot() {
   // lifecycle: backgrounding pauses solo sim and saves a safe snapshot
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { saveSnapshot(); Audio.stop(); }
-    else if (session.state && !session.state.terminalReason) { /* resume: snapshot already current */ }
+    else if (Audio.isStarted()) Audio.resume(); // music was stopped on hide; restart it on return
   });
   window.addEventListener('beforeunload', saveSnapshot);
 

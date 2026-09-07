@@ -229,6 +229,7 @@ function stopAll() {
 
 root.MeadowAudio = {
   resume, setVolume, setMuted, sfx: SFX, stop: stopAll,
+  isStarted: () => !!A.ctx,
   setSeed: (s) => { A.seed = String(s); },
   setCaptionHandler: (fn) => { A.onCaption = fn; },
   get volumes() { return A.volumes; },

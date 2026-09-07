@@ -61,7 +61,8 @@ function validateScoreSubmission(env) {
   if (finalHash !== env.finalHash) return { ok: false, error: 'final-hash-mismatch' };
   if (!state.score || !env.score || state.score.total !== env.score.total) return { ok: false, error: 'score-mismatch' };
   if (!state.terminalReason) return { ok: false, error: 'session-not-terminal' };
-  return { ok: true, state };
+  // mode/day come from the validated config, never from the client-supplied envelope fields
+  return { ok: true, state, mode: cfg.mode, day: cfg.mode === 'daily' ? String(cfg.seed).slice(6, 16) : null };
 }
 
 /* Tie-break order: goal completion, fewer invalid actions, lower elapsed, stable session id. */
@@ -77,6 +78,9 @@ function compareRows(a, b) {
 const buckets = new Map();
 function rateLimited(ip, perMinute) {
   const now = Date.now();
+  if (buckets.size > 5000) { // bound memory: drop windows that have already expired
+    for (const [k, v] of buckets) if (now > v.reset) buckets.delete(k);
+  }
   const b = buckets.get(ip) || { count: 0, reset: now + 60000 };
   if (now > b.reset) { b.count = 0; b.reset = now + 60000; }
   b.count++;
@@ -96,15 +100,19 @@ function serveStatic(req, res, urlPath) {
   let rel = decodeURIComponent(urlPath.split('?')[0]);
   if (rel === '/') rel = '/index.html';
   const file = path.normalize(path.join(ROOT, rel));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end('forbidden'); }
+  // ROOT + separator: a sibling directory sharing the prefix must not pass
+  if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end('forbidden'); }
+  // server-owned state (raw leaderboard/achievement records) is only exposed via /api
+  if (path.relative(ROOT, file).split(path.sep)[0] === 'data') { res.writeHead(403); return res.end('forbidden'); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('not found'); }
     const ext = path.extname(file).toLowerCase();
     const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
     // immutable caching for hashed/module assets
     if (rel.includes('node_modules') || ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=3600';
+    headers['Content-Length'] = data.length;
     res.writeHead(200, headers);
-    res.end(data);
+    res.end(req.method === 'HEAD' ? undefined : data);
   });
 }
 
@@ -156,12 +164,12 @@ const server = http.createServer(async (req, res) => {
           invalidActions: st.invalidActions,
           elapsedMs: Math.max(0, env.elapsedMs | 0),
           sessionId: String(env.sessionId || 'anon').slice(0, 32),
-          seed: st.seed, ruleset: env.mode, contentVersion: st.contentVersion,
+          seed: st.seed, ruleset: v.mode, contentVersion: st.contentVersion,
           assists: env.config && env.config.assists ? env.config.assists : {},
           when: Date.now(),
         };
-        if (env.mode === 'daily') {
-          const date = new Date().toISOString().slice(0, 10);
+        if (v.mode === 'daily') {
+          const date = v.day; // the seed's own UTC day, not the server's clock
           (leaderboard.daily[date] = leaderboard.daily[date] || []).push(row);
           leaderboard.daily[date].sort(compareRows);
           leaderboard.daily[date] = leaderboard.daily[date].slice(0, 100);

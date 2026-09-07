@@ -43,6 +43,7 @@ function makeRenderer(THREE, canvas, opts) {
     return null;
   }
   R.ok = true;
+  R_THREE = THREE; // palette adjustment needs it even if sync() has not run yet
   R.renderer.outputColorSpace = THREE.SRGBColorSpace;
   R.renderer.toneMapping = THREE.ACESFilmicToneMapping;
   R.renderer.toneMappingExposure = 1.05;
@@ -186,10 +187,12 @@ function buildEnvironment(R) {
   R.scene.add(fence);
 }
 
-function plotPosition(index) {
+/* count defaults to the standard 12-plot field; journey stages use 8 or 16 plots
+   and must be centred on their own row count or the field sits off-camera. */
+function plotPosition(index, count) {
   const col = index % PLOT_COLS;
   const row = Math.floor(index / PLOT_COLS);
-  const rows = Math.ceil(12 / PLOT_COLS);
+  const rows = Math.ceil((count || 12) / PLOT_COLS);
   return {
     x: (col - (PLOT_COLS - 1) / 2) * PLOT_SPACING,
     z: (row - (rows - 1) / 2) * PLOT_SPACING,
@@ -204,7 +207,7 @@ function buildPlots(R, count) {
   const soilMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 1 });
   const soilWetMat = new THREE.MeshStandardMaterial({ color: 0x4a3018, roughness: 0.7 });
   for (let i = 0; i < count; i++) {
-    const pos = plotPosition(i);
+    const pos = plotPosition(i, count);
     const g = new THREE.Group();
     const soil = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.3, 1.8), soilMat.clone());
     soil.position.y = 0.15;
@@ -287,7 +290,7 @@ function setGhost(R, plot, kind, valid) {
   const m = new THREE.Mesh(new THREE.CircleGeometry(0.7, 24),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45 }));
   m.rotation.x = -Math.PI / 2;
-  const pos = plotPosition(plot);
+  const pos = plotPosition(plot, R.plots.length);
   m.position.set(pos.x, 0.36, pos.z);
   m.layers.set(LAYER_SELECT);
   R.scene.add(m);
@@ -359,7 +362,7 @@ let R_THREE = null; // set on first sync
 function burst(R, plot, color, n) {
   if (R.reducedMotion || !n) return;
   const { THREE } = R;
-  const pos = plotPosition(plot);
+  const pos = plotPosition(plot, R.plots.length);
   for (let i = 0; i < n && R.particles.length < 80; i++) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4),
       new THREE.MeshBasicMaterial({ color }));
@@ -442,7 +445,7 @@ function frame(R, state, season, t) {
 function setSelected(R, i) {
   R.selectedPlot = i;
   if (i >= 0 && R.plots[i]) {
-    const pos = plotPosition(i);
+    const pos = plotPosition(i, R.plots.length);
     R.selectionRing.position.set(pos.x, 0.34, pos.z);
     R.selectionRing.visible = true;
   } else R.selectionRing.visible = false;
@@ -450,7 +453,7 @@ function setSelected(R, i) {
 function setHovered(R, i) {
   R.hoveredPlot = i;
   if (i >= 0 && R.plots[i]) {
-    const pos = plotPosition(i);
+    const pos = plotPosition(i, R.plots.length);
     R.hoverRing.position.set(pos.x, 0.33, pos.z);
     R.hoverRing.visible = true;
   } else R.hoverRing.visible = false;
