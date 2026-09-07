@@ -253,6 +253,7 @@ async function playPass({ pass, viewport, hasTouch, mobile }) {
       await page.goto(BASE);
       await page.waitForSelector('#screen-away.open');
       await page.click('#btn-away-continue');
+      await page.keyboard.press('Space'); // an actual command rewrites the restored snapshot
       await page.keyboard.press('p');
       const elapsed = await page.evaluate(() => JSON.parse(localStorage.getItem('meadowstead:snapshot')).elapsedMs);
       if (elapsed < 120000) throw new Error('resuming reset elapsed time');
