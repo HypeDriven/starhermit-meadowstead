@@ -114,6 +114,17 @@ kbd { font-size: 0.75em; opacity: 0.7; }
   overflow-y: auto; text-align: center;
 }
 #screens .screen.overlay.open { background: color-mix(in srgb, var(--bg) 88%, transparent); }
+/* Title key art: a backdrop, never a carrier of meaning — all text sits on its own scrim. */
+#screens #screen-title.open {
+  background-image: linear-gradient(to bottom, #eef5e8d9, #eef5e88c 42%, #eef5e8ea), url("assets/title-keyart.webp");
+  background-size: cover; background-position: center bottom;
+}
+body.high-contrast #screens #screen-title.open { background-image: none; background: var(--bg); }
+#results-art {
+  width: min(420px, 80vw); height: auto; border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+}
+@media (max-height: 640px) { #results-art { display: none; } }
 .screen h1 { margin: 0; }
 .tagline { max-width: 70ch; }
 .title-row, .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }

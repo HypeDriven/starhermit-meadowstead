@@ -1,18 +1,24 @@
 # SFX manifest — meadowstead
 
+Canonical source: `sfx/manifest.txt` (file | event id | description | usage context).
+Generator input: `sfx/manifest.json`. This table is the rendered view of the same data.
+
 Generated with MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-normalized; 100 inference steps).
 
-| file | event | prompt |
+| file | event | description |
 |---|---|---|
-| ui-click.opus | click | A short, soft UI button tap: a gentle wooden click with a quick decay, warm and muted, no reverb tail. |
-| plant-seed.opus | plant | A few small seeds dropped into soft garden soil: a faint patter of tiny taps followed by a soft earthy thud. |
-| water-pour.opus | water | Water poured from a metal watering can rose onto dry soil: a bright gentle sprinkle that fades as the soil soaks it up. |
-| harvest-pick.opus | harvest | A ripe vegetable pulled from the soil: a quick leafy rustle with a soft satisfying pop as the root comes free. |
-| harvest-basket.opus | harvest | Fresh produce dropped into a wicker basket: a light hollow knock of vegetables landing on woven reeds. |
-| craft-tap.opus | craft | Assembling a small wooden craft item: two light mallet taps on wood followed by a soft squeak of parts fitting together. |
-| order-fulfill.opus | fulfill | A cheerful small hand-bell rung twice to signal a completed delivery, bright and warm with a short natural ring-out. |
-| crop-grown.opus | grown | A gentle magical shimmer as a young plant sprouts upward: soft chime-like sparkle with a hint of rustling new leaves. |
-| crop-wither.opus | wither | Dry leaves crackling and wilting: a brittle papery rustle drooping downward, ending in a faint dusty sigh. |
-| action-denied.opus | invalid | A soft dull wooden thunk, like knuckles knocking once on a closed door: muted negative feedback, low and short. |
-| pause-menu.opus | pause | A single soft marimba note struck gently, round and calm, with a short wooden resonance. |
-| session-complete.opus | terminal | A warm ascending bell arpeggio played on small tuned bells, celebratory but gentle, ending with a soft sustained chime. |
+| ui-click.opus | click | Short soft wooden UI tap, quick decay, warm and muted, no reverb tail. |
+| plant-seed.opus | plant | Faint patter of small seeds dropped into soft garden soil, ending in a soft earthy thud. |
+| water-pour.opus | water | Bright gentle sprinkle from a watering-can rose onto dry soil, fading as it soaks in. |
+| harvest-pick.opus | harvest | Quick leafy rustle and soft pop as a ripe root comes free of the soil. |
+| harvest-basket.opus | harvest | Light hollow knock of produce landing on woven wicker. |
+| craft-tap.opus | craft | Two light mallet taps on wood plus a soft squeak of parts fitting together. |
+| order-fulfill.opus | fulfill | Cheerful small hand-bell rung twice, bright and warm with a short natural ring-out. |
+| crop-grown.opus | grown | Gentle chime-like shimmer with a hint of rustling new leaves. |
+| crop-wither.opus | wither | Brittle papery rustle drooping downward into a faint dusty sigh. |
+| action-denied.opus | invalid | Soft dull wooden thunk, muted low negative feedback. |
+| pause-menu.opus | pause | Single soft marimba note, round and calm, short wooden resonance. |
+| session-complete.opus | terminal | Warm ascending bell arpeggio on small tuned bells, gentle rather than triumphant. |
+| season-turn.opus | season | Wooden wind chime swaying once in a warm breeze with a distant airy whoosh of leaves. |
+| undo-rewind.opus | undo | Short reverse whoosh with a soft paper flutter, gently descending and cut off cleanly. |
+| achievement-unlock.opus | achievement | Three rising toy-glockenspiel notes with a soft sparkle tail, homely and modest. |

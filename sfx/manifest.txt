@@ -1,0 +1,21 @@
+# Meadowstead — canonical SFX manifest.
+# Format: file | event id | description of the sound | usage context
+# Event ids are the keys of SAMPLE_MAP / SYNTH in js/audio.js; every event also has a
+# procedural synth fallback that plays while a clip loads or if it fails to decode.
+# Source: MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-normalised, 100 steps).
+
+ui-click.opus | click | Short soft wooden UI tap, quick decay, warm and muted, no reverb tail. | Confirmation tick after any accepted plot action; also fires on tool/menu presses that reach the effects bus.
+plant-seed.opus | plant | Faint patter of small seeds dropped into soft garden soil, ending in a soft earthy thud. | The `planted` event: a seed tool applied to an empty in-season plot.
+water-pour.opus | water | Bright gentle sprinkle from a watering-can rose onto dry soil, fading as it soaks in. | The `watered` event: the water tool applied to an unwatered growing crop.
+harvest-pick.opus | harvest | Quick leafy rustle and soft pop as a ripe root comes free of the soil. | The `harvested` event; alternates seeded-randomly with harvest-basket so repeat harvests do not machine-gun.
+harvest-basket.opus | harvest | Light hollow knock of produce landing on woven wicker. | Second variant of the `harvested` event (see above).
+craft-tap.opus | craft | Two light mallet taps on wood plus a soft squeak of parts fitting together. | The `crafted` event: a recipe button in the Craft panel consuming ingredients.
+order-fulfill.opus | fulfill | Cheerful small hand-bell rung twice, bright and warm with a short natural ring-out. | The `fulfilled` event: an order's Fulfill button paying out coins and score.
+crop-grown.opus | grown | Gentle chime-like shimmer with a hint of rustling new leaves. | The `grown` event, emitted during tick resolution when a watered crop reaches its final stage.
+crop-wither.opus | wither | Brittle papery rustle drooping downward into a faint dusty sigh. | The `withered` event: a crop left unwatered for WITHER_TICKS ticks is removed from its plot.
+action-denied.opus | invalid | Soft dull wooden thunk, muted low negative feedback. | Any rejected command (wrong season, plot occupied, not ready, missing items); pairs with the on-screen error banner.
+pause-menu.opus | pause | Single soft marimba note, round and calm, short wooden resonance. | Opening the pause screen via the Pause chip, P, or gamepad Start.
+session-complete.opus | terminal | Warm ascending bell arpeggio on small tuned bells, gentle rather than triumphant. | The `terminal` event on goal-complete or time-up, under the results screen transition.
+season-turn.opus | season | Wooden wind chime swaying once in a warm breeze with a distant airy whoosh of leaves. | Fired from refreshAll() in js/main.js when the tick crosses a SEASON_TICKS boundary and the crop legality set changes.
+undo-rewind.opus | undo | Short reverse whoosh with a soft paper flutter, gently descending and cut off cleanly. | Undo (U button or key) in Practice and Learn, where the undo assist is enabled.
+achievement-unlock.opus | achievement | Three rising toy-glockenspiel notes with a soft sparkle tail, homely and modest. | The first time each achievement key unlocks; idempotent, so it never repeats for the same key.

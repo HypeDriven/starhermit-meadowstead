@@ -220,6 +220,30 @@ function buildPlots(R, count) {
     R.plots.push({ group: g, soil: soil, cropMesh: null, soilMat, soilWetMat, index: i });
   }
   R.scene.add(R.plotGroup);
+  // Authored topsoil texture, applied only once it decodes; the flat colours
+  // above stay as the fallback so plots always read as soil.
+  loadSoilTexture(R);
+}
+
+let soilTexture; // shared across renderer rebuilds (context loss) — decoded once
+function loadSoilTexture(R) {
+  // Plot soil materials are per-plot clones (tint tracks watered state), so the
+  // decoded map is pushed onto each live plot material rather than a prototype.
+  const apply = (tex) => {
+    tex.wrapS = tex.wrapT = R.THREE.RepeatWrapping;
+    tex.colorSpace = R.THREE.SRGBColorSpace;
+    for (const p of R.plots) {
+      p.soil.material.map = tex;
+      p.soil.material.needsUpdate = true;
+    }
+  };
+  if (soilTexture) { apply(soilTexture); return; }
+  try {
+    new R.THREE.TextureLoader().load('assets/soil-tile.webp', (tex) => {
+      soilTexture = tex;
+      apply(tex);
+    }, undefined, () => {}); // decode failure: keep the flat-colour fallback
+  } catch (e) { /* no texture support: flat colours */ }
 }
 
 function buildCropMesh(R, crop, stage) {
@@ -321,7 +345,11 @@ function syncState(R, state, season, opts) {
         }
       }
     }
-    p.soil.material.color.setHex(c && c.watered ? 0x4a3018 : 0x6b4a2e);
+    // Watered soil darkens. With the authored map the tint is a near-white
+    // multiplier (the texture carries the colour); untextured it is the flat soil hue.
+    const wet = !!(c && c.watered);
+    p.soil.material.color.setHex(p.soil.material.map ? (wet ? 0x8a8a8a : 0xdcdcdc)
+                                                     : (wet ? 0x4a3018 : 0x6b4a2e));
     // ready pulse marker
     if (c && c.ready && !p.readyMark) {
       const mark = new R.THREE.Mesh(new R.THREE.RingGeometry(0.5, 0.62, 20),

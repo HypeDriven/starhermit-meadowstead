@@ -100,6 +100,7 @@ function unlockAchievement(key) {
   if (progress.achievements[key]) return false; // idempotent
   progress.achievements[key] = Date.now();
   saveProgress();
+  Audio.sfx.achievement();
   announce('Achievement unlocked: ' + (ACHIEVEMENTS.find(a => a.key === key) || {}).name);
   const el = $('achievements-earned');
   if (el) el.textContent = '🏅 ' + (ACHIEVEMENTS.find(a => a.key === key) || {}).name;
@@ -127,6 +128,7 @@ const session = {
     this.log = [];
     this.startedAt = Date.now();
     this.cmdSerial = 0;
+    lastSeason = null;
     this.ranked = config.mode === 'daily' || config.mode === 'score';
     if (renderer) { Audio.setSeed(config.seed); Render.setDecorationSeed(renderer, config.seed); }
     else Audio.setSeed(config.seed);
@@ -173,7 +175,7 @@ const session = {
     if (!snap) { showError(null, 'nothing-to-undo'); return; }
     this.state = R.deserialize(snap);
     this.log.pop();
-    Audio.sfx.click();
+    Audio.sfx.undo();
     announce('Undone. Back to time ' + this.state.tick + '.');
     refreshAll();
     saveSnapshot(); // otherwise a reload restores the move that was just undone
@@ -401,10 +403,14 @@ function backScreen() {
 }
 
 /* ================= refresh UI ================= */
+let lastSeason = null;
 function refreshAll() {
   const st = session.state;
   if (!st) return;
   const season = R.seasonAt(st.tick);
+  // Season turns are a rules consequence of the tick, not a rules event: cue them here.
+  if (lastSeason && lastSeason !== season) Audio.sfx.season();
+  lastSeason = season;
   $('sb-season').textContent = season[0].toUpperCase() + season.slice(1);
   $('sb-tick').textContent = `Time ${st.tick}/${st.maxTicks}`;
   $('sb-coins').textContent = '🪙 ' + st.coins;

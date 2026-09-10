@@ -70,5 +70,23 @@
     "seconds": 3,
     "prompt": "A warm ascending bell arpeggio played on small tuned bells, celebratory but gentle, ending with a soft sustained chime.",
     "event": "terminal"
+  },
+  {
+    "name": "season-turn",
+    "seconds": 3,
+    "prompt": "A gentle seasonal transition cue: a soft wooden wind chime swaying once in a warm breeze, with a distant airy whoosh of leaves passing by, calm and pastoral, no music.",
+    "event": "season"
+  },
+  {
+    "name": "undo-rewind",
+    "seconds": 1,
+    "prompt": "A short reverse whoosh with a soft paper flutter, like time rewinding one step: brief, airy, gently descending then cut off cleanly.",
+    "event": "undo"
+  },
+  {
+    "name": "achievement-unlock",
+    "seconds": 3,
+    "prompt": "A small warm celebratory flourish on a toy glockenspiel: three rising bright notes with a soft sparkle tail, homely and modest rather than triumphant fanfare.",
+    "event": "achievement"
   }
 ]

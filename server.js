@@ -94,7 +94,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8', '.json': 'application/json',
   '.txt': 'text/plain; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon', '.md': 'text/markdown; charset=utf-8',
-  '.opus': 'audio/ogg; codecs=opus',
+  '.opus': 'audio/ogg; codecs=opus', '.webp': 'image/webp',
 };
 function serveStatic(req, res, urlPath) {
   let rel = decodeURIComponent(urlPath.split('?')[0]);

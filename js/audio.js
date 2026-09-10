@@ -112,6 +112,9 @@ const SAMPLE_MAP = {
   invalid:  ['action-denied'],
   pause:    ['pause-menu'],
   terminal: ['session-complete'],
+  season:   ['season-turn'],
+  undo:     ['undo-rewind'],
+  achievement: ['achievement-unlock'],
 };
 const sampleCache = {}; // name -> AudioBuffer | 'loading' | null (failed)
 
@@ -154,6 +157,9 @@ const SYNTH = {
   invalid:  () => { tone('effects', 180, 0.12, 'square', 0.08); },
   pause:    () => { tone('effects', 440, 0.08, 'sine', 0.1); },
   terminal: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone('effects', f, 0.25, 'triangle', 0.13), i * 130)); },
+  season:   () => { noise('effects', 0.6, 0.05, 900); [587, 784, 880].forEach((f, i) => setTimeout(() => tone('effects', f, 0.5, 'sine', 0.07), i * 160)); },
+  undo:     () => { tone('effects', 300, 0.18, 'sine', 0.09, 620); noise('effects', 0.14, 0.05, 3000); },
+  achievement: () => { [659, 880, 1175].forEach((f, i) => setTimeout(() => tone('effects', f, 0.3, 'triangle', 0.12), i * 110)); },
 };
 
 const SFX = {};
@@ -162,6 +168,7 @@ const SFX = {};
     click: 'click', plant: 'planting', water: 'watering', harvest: 'harvest',
     craft: 'crafting', fulfill: 'order fulfilled', grown: 'a crop is ready',
     wither: 'a crop withered', invalid: 'action not allowed', terminal: 'session complete',
+    season: 'the season turns', undo: 'action undone', achievement: 'achievement unlocked',
   };
   for (const evt of Object.keys(SYNTH)) {
     SFX[evt] = () => {
