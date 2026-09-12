@@ -204,9 +204,14 @@ body.high-contrast #screens #screen-title.open { background-image: none; backgro
 
 /* Landscape mobile: narrow status rail */
 @media (max-height: 500px) and (orientation: landscape) {
-  #app { grid-template-rows: auto 1fr; grid-template-areas: "status play" "tray play"; grid-template-columns: auto 1fr; }
-  #statusbar { flex-direction: column; align-items: flex-start; }
-  #tooltray { flex-direction: column; justify-content: flex-start; flex-wrap: nowrap; overflow-y: auto; }
+  /* status column left, play centre, tools in their own right column: every
+     tool keeps a full 44px target and the column scrolls if it must */
+  #app { grid-template-rows: 1fr; grid-template-areas: "status play tray"; grid-template-columns: minmax(120px, 150px) 1fr minmax(120px, 150px); gap: 6px; }
+  #statusbar { flex-direction: column; align-items: stretch; gap: 4px; font-size: 0.85em; overflow-y: auto; min-height: 0; }
+  #statusbar .chip, #statusbar > * { padding: 3px 6px; }
+  #tooltray { flex-direction: column; justify-content: flex-start; flex-wrap: nowrap; overflow-y: auto; min-height: 0; gap: 6px; padding: 4px; }
+  #tooltray .btn { min-height: 44px; flex: 0 0 auto; padding: 6px 8px; font-size: 0.9em; }
+  #tooltray kbd { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
