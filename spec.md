@@ -18,7 +18,7 @@ same decision.
 | Session length | 2–6 minutes (Journey stage), 6–10 minutes (Daily, Score Chase) |
 | Platforms | Browser: desktop keyboard/mouse, phone/tablet touch, gamepad-navigable |
 | Rendering | Three.js WebGL scene over a DOM HUD, plus a full DOM board mirror that keeps the game playable without WebGL |
-| Persistence | `localStorage` for settings, progress and snapshots; server-side JSON for ranked boards |
+| Persistence | `localStorage` for settings, progress and snapshots (offline cache); platform cloud save (zip+base64 slot) when hosted; server-side JSON for ranked boards in local dev |
 
 ### File map
 
@@ -30,7 +30,7 @@ same decision.
 | `js/render.js` | `window.MeadowRender` — Three.js scene, plot/crop meshes, selection and ghost layers, particles, quality tiers, palette shifts |
 | `js/audio.js` | `window.MeadowAudio` — WebAudio buses, sampled one-shots with synth fallbacks, procedural ambience and music, caption dispatch |
 | `js/main.js` | Bootstrap, session lifecycle, UI refresh, input (pointer/keyboard/gamepad), tutorial, screens, persistence, platform adapter |
-| `server.js` | Authoritative StarHermit game script: static hosting plus `/api/v1` time, daily, scores (replay-validated), leaderboard, achievements, telemetry |
+| `server.js` | Authoritative server for local dev: static hosting plus `/api/v1` time, daily, scores (replay-validated), leaderboard, achievements, telemetry |
 | `tests/rules.test.js` | 18 `node --test` rules/determinism/content-validation tests (`npm test`) |
 | `tests/e2e.mjs` | Playwright playthrough of the real UI at desktop and mobile viewports (`npm run test:e2e`) |
 | `tests/smoke.js` | Older manual smoke script kept for local debugging against a running server |
@@ -423,22 +423,32 @@ table. This is the one required feature that is designed but not implemented —
 `starhermit.txt` declares `name=Meadowstead`, `launch=index.html`, `server=server.js`, `cover=coverart.png`;
 conventions follow https://wiki.starhermit.com/.
 
-**Used:** the **server script** (`server.js` hosts the client and serves `/api/v1/{time,daily,scores,
-leaderboard,achievements,telemetry}` same-origin); **platform time** (`/time` on boot, round-trip-adjusted
-into `platform.timeOffset`, so daily logic never reads the device clock and a changed date cannot mint a new
-daily); **sessions** (a `?launchToken=` held in memory, never persisted); **leaderboards** (global and
-per-UTC-day, top 100 stored / 50 served, ranked rows accepted only after the server replays the command log
-to a matching initial hash, final hash and score); **achievements** (idempotent per session id); **social**
-(the Friends screen shares the day's seed via the clipboard API with an announced text fallback); and
-**telemetry** (anonymous `start`/`tutorial_step`/`pause`/`round_end` events, best-effort, never blocking).
+**Used (hosted, launch token):** the **launch token** arrives in the URL fragment `#game_token=<jwt>`, is read
+once and stripped (`history.replaceState`); its payload gives `sub` and `game_scope` (the slug — never
+hard-coded). `Authorization: Bearer <token>` rides on every REST call, re-minted every 45 min via
+`POST /api/v1/games/{slug}/launch-token` (60 s retry on failure). **Identity** is the account nickname from
+`GET /api/v1/users/{sub}/profile` (never `/api/v1/me`, never usernames; `"Player "+id8` fallback), shown in the
+status-bar name chip, on the local board rows, and on the profile screen. **Cloud save**: one slot at
+`GET`/`PUT /api/v1/me/cloud-saves/{slug}` as a stored zip (no compression) of `{progress, settings, snapshot}`
+base64-encoded; loads prefer the remote copy on conflict, saves debounce 2 s and flush on `pagehide`, and a
+sync chip (synced/saving/offline) sits in the status bar. `localStorage` remains the offline cache.
+**Leaderboards** are read-only on-platform: `GET /api/v1/games/{slug}` → `leaderboardId`, then
+`GET /api/v1/leaderboards/{leaderboardId}/entries?friendsOnly=` with userIds resolved to nicknames; friends
+come from `GET /api/v1/me/friends`. Ranked results are kept as personal bests (local board + cloud save) —
+clients never submit scores. **Achievements** stay local (part of the cloud-saved progress doc); this game's
+server.js is not a Jint game script, so there is no script-owned unlock path.
 
-**Deliberately not used:** real-time multiplayer, matchmaking, chat, cloud saves and purchases. Meadowstead
-is a solo puzzle whose only shared surface is a seed and a score; progress lives in `localStorage` and the
-server stores nothing identifying beyond a random session id.
+**Used (local dev, no token):** `server.js` hosts the client and serves `/api/v1/{time,daily,scores,
+leaderboard,achievements,telemetry}` same-origin; `/time` is probed on boot (round-trip-adjusted into
+`platform.timeOffset`, so daily logic never reads the device clock); ranked rows are accepted only after the
+server replays the command log to a matching initial hash, final hash and score; achievements are idempotent
+per session id; telemetry is anonymous and best-effort. Query-param `?launchToken=`/`?token=` fallbacks exist
+for local dev only. **Deliberately not used:** real-time multiplayer, matchmaking, chat and purchases.
+Meadowstead is a solo puzzle whose only shared surface is a seed and a score.
 
-**Offline is a first-class path.** If the time probe fails, `platform.online` stays false: play is identical,
-ranked scores are replayed locally onto a casual local board, and the leaderboard screen says plainly that
-the rows are offline and local.
+**Offline is a first-class path.** With no token (or unreachable dev server), `platform.hosted` stays false:
+play is identical, ranked scores are replayed locally onto a casual local board, and the leaderboard screen
+says plainly that the rows are offline and local.
 
 
 ## 13. Technical architecture
@@ -505,7 +515,9 @@ fails the run.**
 3. No console errors or warnings in either e2e pass (benign swiftshader GPU messages are the only filter). ✅
 4. Nothing is cut off at 1280×800 or 390×844 portrait; screens scroll rather than clip, and the results
    illustration drops below 640 px of height so the score table always fits. ✅
-5. Platform APIs are used where they apply: time, scores, leaderboards, achievements, telemetry. ✅
+5. Platform APIs are used where they apply: hosted — launch token (fragment, Bearer, 45-min refresh), profile
+   nickname, cloud save slot, read-only leaderboard + friends; local dev — time, replay-validated scores,
+   leaderboards, achievements, telemetry. ✅
 6. Localization: **not met** — see §17.
 
 **Acceptance for any change:** `node --check` passes on every JS/MJS file, `npm test` is green,
@@ -540,8 +552,8 @@ there is no humanoid character to animate, so neither TRELLIS nor Kimodo has a s
   by proximity to the goal. **Camera orbit is x-only**, clamped to ±4 — no pitch, zoom or rotation.
 - **The local casual board is self-reported** — plausibility-checked by local replay, but editable via
   `localStorage`. Only the server board is trustworthy, which is why each board labels its provenance.
-- **The friends list is local-only**: names are typed by hand and a friend's score shows only if it was
-  recorded on this device. There is no platform friend graph.
+- **The friends list is local-only offline**: without a launch token, names are typed by hand and a friend's
+  score shows only if it was recorded on this device. Hosted, friends come from the platform account.
 - **Server storage is flat JSON files**, 100 rows per board, with no pruning of old daily boards.
 - **Undo is single-branch** and is not part of the snapshot, so a resumed session starts with an empty stack.
 - **`tests/smoke.js` is stale** — a fixed-port manual debugging script; `tests/e2e.mjs` is authoritative.

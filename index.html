@@ -20,6 +20,8 @@
     <span id="sb-coins" class="chip">🪙 0</span>
     <span id="sb-score" class="chip">Score 0</span>
     <span id="sb-mode" class="chip">—</span>
+    <span id="sb-player" class="chip" hidden></span>
+    <span id="sb-sync" class="chip" hidden></span>
     <button id="btn-drawer-right" class="chip btn drawer-toggle" aria-expanded="false" aria-controls="rail-right" aria-label="Open inventory and actions panel">🎒</button>
     <button id="btn-pause" class="chip btn" aria-label="Pause (P)">⏸ Pause</button>
   </header>
@@ -101,10 +103,10 @@
       <div class="mode-grid">
         <button class="btn mode" data-mode="learn">🎓 <b>Learn</b><small>Interactive lessons, one rule at a time.</small></button>
         <button class="btn mode" data-mode="journey">🗺 <b>Journey</b><small>40 authored stages with mastery gates.</small></button>
-        <button class="btn mode" data-mode="daily">📅 <b>Daily</b><small>One shared seed per UTC day. Ranked.</small></button>
+        <button class="btn mode" data-mode="daily">📅 <b>Daily</b><small>One shared seed per UTC day.</small></button>
         <button class="btn mode" data-mode="practice">🌿 <b>Practice</b><small>Selectable difficulty, undo, unranked.</small></button>
         <button class="btn mode" data-mode="challenge">🏆 <b>Challenge</b><small>Move limits and restricted tools.</small></button>
-        <button class="btn mode" data-mode="score">📈 <b>Score Chase</b><small>Chase the global board on a fixed seed.</small></button>
+        <button class="btn mode" data-mode="score">📈 <b>Score Chase</b><small>Chase a high score on a fixed seed.</small></button>
       </div>
       <button class="btn back" data-back>← Back</button>
     </section>
