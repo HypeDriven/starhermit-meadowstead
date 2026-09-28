@@ -1,5 +1,7 @@
 /* Meadowstead — bootstrap, session, UI, input, persistence, platform adapter. */
-import * as THREE from '../vendor/three.module.min.js?v=production-qa-1';
+import * as THREE from 'three';
+import * as GFX from './gfx.js';
+import { gfxText, pickLocale } from './gfx-strings.js';
 
 const R = window.MeadowRules;
 const Audio = window.MeadowAudio;
@@ -21,7 +23,8 @@ const store = {
 const DEFAULT_SETTINGS = {
   volumes: { music: 0.5, effects: 0.8, ambience: 0.4, voice: 0.8 },
   muted: false,
-  quality: 'medium',
+  quality: 'medium', // legacy tier, superseded by `gfx`
+  gfx: {},           // graphics: { preset: 'auto'|low|balanced|high|ultra, render_scale, adaptive, show_fps, <category>: tier }
   reducedMotion: false,
   highContrast: false,
   palette: 'default',
@@ -36,6 +39,7 @@ const DEFAULT_SETTINGS = {
 };
 let settings = Object.assign({}, DEFAULT_SETTINGS, store.get('settings', {}));
 settings.volumes = Object.assign({}, DEFAULT_SETTINGS.volumes, settings.volumes || {});
+if (!settings.gfx || typeof settings.gfx !== 'object') settings.gfx = {};
 
 let progress = store.get('progress', {
   schema: 1, journeyStage: 1, masteryXp: 0, lifetimeCoins: 0,
@@ -242,6 +246,7 @@ const platform = {
     if (doc.settings && typeof doc.settings === 'object') {
       settings = Object.assign({}, DEFAULT_SETTINGS, doc.settings);
       settings.volumes = Object.assign({}, DEFAULT_SETTINGS.volumes, settings.volumes || {});
+      if (!settings.gfx || typeof settings.gfx !== 'object') settings.gfx = {};
       store.set('settings', settings);
       applySettings();
     }
@@ -1172,10 +1177,106 @@ function applySettings() {
   Audio.setMuted(settings.muted);
   for (const b of ['music', 'effects', 'ambience', 'voice']) Audio.setVolume(b, settings.volumes[b]);
   if (renderer) {
-    Render.applyQuality(renderer, settings.quality);
-    Render.setReducedMotion(renderer, settings.reducedMotion);
+    const gfxJson = JSON.stringify(settings.gfx || {});
+    if (gfxJson !== appliedGfx) { appliedGfx = gfxJson; Render.setGraphics(renderer, settings.gfx || {}); }
+    Render.setReducedMotion(renderer, settings.reducedMotion || osReducedMotion());
     Render.setPalette(renderer, settings.palette);
   }
+}
+let appliedGfx = null;
+function osReducedMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+/* ---- Settings → Graphics (quality model in js/gfx.js, strings in js/gfx-strings.js) ---- */
+const gfxLocale = pickLocale(navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]);
+const GT = (key, vars) => gfxText(gfxLocale, key, vars);
+function saveGfx(next) {
+  settings.gfx = next;
+  saveSettings();
+  renderGraphicsSection();
+}
+function gfxSummary() {
+  if (!renderer) return;
+  const info = Render.graphicsInfo(renderer);
+  const words = {};
+  for (const k of ['noShadows', 'shadows', 'aoFull', 'ao', 'bloom', 'reflections', 'noAA']) words[k] = GT('w_' + k);
+  $('gfx-summary').textContent = (info.gpu || GT('unknownGpu')) + ' · ' + GFX.describe(info.resolved, info.pixels, words);
+  $('gfx-post-note').hidden = !info.postFailed;
+}
+function renderGraphicsSection() {
+  const sec = $('gfx-section');
+  if (!sec) return;
+  sec.innerHTML = '';
+  const saved = settings.gfx || {};
+  const detected = renderer ? Render.graphicsInfo(renderer).detected : 'low';
+  const r = GFX.resolve(saved, detected);
+  const h = document.createElement('h2');
+  h.id = 'gfx-h';
+  h.textContent = GT('section');
+  sec.setAttribute('aria-labelledby', 'gfx-h');
+  sec.appendChild(h);
+  const row = (id, label, input, extra) => {
+    const l = document.createElement('label');
+    l.htmlFor = id;
+    const span = document.createElement('span');
+    span.textContent = label;
+    input.id = id;
+    l.append(span);
+    if (extra) { const wrap = document.createElement('span'); wrap.className = 'gfx-inline'; wrap.append(input, extra); l.append(wrap); }
+    else l.append(input);
+    sec.appendChild(l);
+  };
+  const select = (opts, val, fn) => {
+    const s = document.createElement('select');
+    for (const [v, t] of opts) { const op = document.createElement('option'); op.value = v; op.textContent = t; s.appendChild(op); }
+    s.value = val;
+    s.addEventListener('change', () => fn(s.value));
+    return s;
+  };
+  const check = (val, fn) => {
+    const i = document.createElement('input');
+    i.type = 'checkbox'; i.checked = val;
+    i.addEventListener('change', () => fn(i.checked));
+    return i;
+  };
+  // Quality preset: choosing one clears every per-category override.
+  const presetOpts = [['auto', GT('auto', { tier: GT('p_' + detected) })]].concat(GFX.PRESETS.map((p) => [p, GT('p_' + p)]));
+  row('gfx-preset', GT('quality'), select(presetOpts, GFX.PRESETS.includes(saved.preset) ? saved.preset : 'auto',
+    (v) => saveGfx(GFX.choosePreset(settings.gfx, v))));
+  // Render scale 50–200 %.
+  const scale = document.createElement('input');
+  scale.type = 'range'; scale.min = 50; scale.max = 200; scale.step = 5;
+  scale.value = Math.round(r.renderScale * 100);
+  const out = document.createElement('output');
+  out.id = 'gfx-scale-value';
+  out.textContent = scale.value + '%';
+  scale.addEventListener('input', () => { out.textContent = scale.value + '%'; });
+  scale.addEventListener('change', () => saveGfx(Object.assign({}, settings.gfx, { render_scale: Number(scale.value) / 100 })));
+  row('gfx-scale', GT('renderScale'), scale, out);
+  // One select per category, "From preset (<tier>)" by default.
+  for (const [cat, tiers] of Object.entries(GFX.CATEGORIES)) {
+    const opts = [['preset', GT('fromPreset', { tier: GT('t_' + GFX.presetTier(r.preset, cat)) })]]
+      .concat(tiers.map((t) => [t, GT('t_' + t)]));
+    const sel = select(opts, tiers.includes(saved[cat]) ? saved[cat] : 'preset', (v) => {
+      const next = Object.assign({}, settings.gfx);
+      if (v === 'preset') delete next[cat]; else next[cat] = v;
+      saveGfx(next);
+    });
+    sel.dataset.gfxCat = cat;
+    row('gfx-cat-' + cat, GT('c_' + cat), sel);
+  }
+  row('gfx-adaptive', GT('adaptive'), check(r.adaptive, (v) => saveGfx(Object.assign({}, settings.gfx, { adaptive: v }))));
+  row('gfx-fps', GT('showFps'), check(r.showFps, (v) => saveGfx(Object.assign({}, settings.gfx, { show_fps: v }))));
+  const sum = document.createElement('p');
+  sum.id = 'gfx-summary'; sum.className = 'fine'; sum.setAttribute('aria-live', 'polite');
+  const note = document.createElement('p');
+  note.id = 'gfx-post-note'; note.className = 'fine'; note.hidden = true; note.textContent = GT('postFailed');
+  sec.append(sum, note);
+  document.body.dataset.gfxPreset = r.preset;
+  gfxSummary();
+  // The drawing-buffer size settles on the next frame; refresh the summary then.
+  requestAnimationFrame(() => requestAnimationFrame(() => { if ($('gfx-summary')) gfxSummary(); }));
 }
 function renderSettings() {
   const f = $('settings-form');
@@ -1209,7 +1310,6 @@ function renderSettings() {
   row('Ambience volume', range(settings.volumes.ambience, v => { settings.volumes.ambience = v; saveSettings(); }));
   row('Voice volume', range(settings.volumes.voice, v => { settings.volumes.voice = v; saveSettings(); }));
   row('Mute all', check(settings.muted, v => { settings.muted = v; saveSettings(); }));
-  row('Graphics quality', select(['low', 'medium', 'high'], settings.quality, v => { settings.quality = v; saveSettings(); }));
   row('Reduced motion', check(settings.reducedMotion, v => { settings.reducedMotion = v; saveSettings(); }));
   row('High contrast', check(settings.highContrast, v => { settings.highContrast = v; saveSettings(); }));
   row('Color palette', select(['default', 'deuteranopia', 'protanopia', 'tritanopia', 'high-contrast'], settings.palette, v => { settings.palette = v; saveSettings(); }));
@@ -1220,6 +1320,11 @@ function renderSettings() {
   row('Haptics', check(settings.haptics, v => { settings.haptics = v; saveSettings(); }));
   row('Captions', check(settings.captions, v => { settings.captions = v; saveSettings(); }));
   row('Replay tutorial', (() => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Start'; b.addEventListener('click', () => { openSetup('learn'); }); return b; })());
+  const gsec = document.createElement('section');
+  gsec.id = 'gfx-section';
+  gsec.className = 'gfx-section';
+  f.appendChild(gsec);
+  renderGraphicsSection();
 }
 
 /* ================= help ================= */
@@ -1398,6 +1503,35 @@ function tryResume() {
 }
 
 /* ================= boot ================= */
+// Post-processing passes + RoomEnvironment (same three.js revision, vendor/three/addons/).
+// Loaded after first paint; if any module fails the game renders without post and says so.
+let gfxAddons = null, gfxAddonsFailed = false;
+function rendererOpts() {
+  let mobile = false;
+  try { mobile = navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches; } catch { mobile = false; }
+  return { gfx: GFX, addons: gfxAddons, postFailed: gfxAddonsFailed, mobile };
+}
+async function loadGfxAddons() {
+  try {
+    const mods = await Promise.all([
+      import('three/addons/postprocessing/EffectComposer.js'),
+      import('three/addons/postprocessing/RenderPass.js'),
+      import('three/addons/postprocessing/ShaderPass.js'),
+      import('three/addons/postprocessing/OutputPass.js'),
+      import('three/addons/postprocessing/GTAOPass.js'),
+      import('three/addons/postprocessing/UnrealBloomPass.js'),
+      import('three/addons/postprocessing/SMAAPass.js'),
+      import('three/addons/postprocessing/FXAAPass.js'),
+      import('three/addons/environments/RoomEnvironment.js'),
+    ]);
+    gfxAddons = Object.assign({}, ...mods);
+  } catch {
+    gfxAddonsFailed = true;
+  }
+  if (renderer) Render.setAddons(renderer, gfxAddons);
+  if ($('gfx-summary')) gfxSummary();
+}
+
 const BUILD_VERSION = '1.0.0';
 let rafId = 0;
 function boot() {
@@ -1411,9 +1545,10 @@ function boot() {
     gl3d = !!(test.getContext('webgl2') || test.getContext('webgl'));
   } catch { gl3d = false; }
   if (gl3d) {
-    renderer = Render.create(THREE, $('gl'), {});
+    renderer = Render.create(THREE, $('gl'), rendererOpts());
     if (!renderer) gl3d = false;
   }
+  if (renderer) loadGfxAddons();
   if (!gl3d) $('webgl-fallback').hidden = false;
   lp.value = 50;
 
@@ -1430,7 +1565,8 @@ function boot() {
       cancelAnimationFrame(rafId);
     });
     $('gl').addEventListener('webglcontextrestored', () => {
-      renderer = Render.create(THREE, $('gl'), {}); // rebuild from CPU descriptors
+      renderer = Render.create(THREE, $('gl'), rendererOpts()); // rebuild from CPU descriptors
+      appliedGfx = null;
       applySettings();
       if (session.state) Render.sync(renderer, session.state, R.seasonAt(session.state.tick), { instant: true });
     });

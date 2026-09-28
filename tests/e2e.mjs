@@ -88,7 +88,7 @@ async function playPass({ pass, viewport, hasTouch, mobile }) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`);
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
   });
 
   const step = async (name, fn) => {
@@ -176,6 +176,50 @@ async function playPass({ pass, viewport, hasTouch, mobile }) {
       await page.screenshot({ path: SHOT('title', pass) });
     });
 
+    await step('settings → Graphics: presets, override, persistence', async () => {
+      const presetIs = (p) => page.waitForFunction((want) =>
+        document.getElementById('gl').dataset.gfxPreset === want && document.body.dataset.gfxPreset === want, p, { timeout: 5000 })
+        .catch(async () => {
+          const got = await page.evaluate(() => [document.getElementById('gl').dataset.gfxPreset, document.body.dataset.gfxPreset,
+            (document.getElementById('gfx-summary') || {}).textContent]);
+          throw new Error(`expected graphics preset ${p}, got ${JSON.stringify(got)}`);
+        });
+      await page.click('#btn-settings-title');
+      await page.waitForSelector('#screen-settings.open #gfx-section');
+      // Headless swiftshader: Auto resolves to Low.
+      await presetIs('low');
+      if (!/Auto/.test(await page.locator('#gfx-preset option[value="auto"]').textContent())) throw new Error('no Auto option');
+      await page.selectOption('#gfx-preset', 'ultra');
+      await presetIs('ultra');
+      await page.waitForTimeout(400); // a few frames through the full Ultra chain (GTAO, bloom, MSAA)
+      await page.selectOption('#gfx-preset', 'low');
+      await presetIs('low');
+      await page.selectOption('#gfx-preset', 'high');
+      await presetIs('high');
+      await page.waitForFunction(() => /bloom/.test(document.getElementById('gfx-summary').textContent));
+      await page.selectOption('#gfx-cat-bloom', 'off');
+      await page.waitForFunction(() => !/bloom/.test(document.getElementById('gfx-summary').textContent));
+      await page.locator('#gfx-fps').check();
+      await page.waitForSelector('#fps-meter', { state: 'visible' });
+      if (await page.locator('#gfx-post-note').isVisible()) throw new Error('post-processing reported unavailable');
+      await page.locator('#gfx-section').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: SHOT('graphics', pass) });
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('#screen-title.open');
+      await presetIs('high');
+      await page.click('#btn-settings-title');
+      await page.waitForSelector('#gfx-section');
+      if ((await page.inputValue('#gfx-preset')) !== 'high') throw new Error('preset did not persist');
+      if ((await page.inputValue('#gfx-cat-bloom')) !== 'off') throw new Error('bloom override did not persist');
+      // Choosing a preset clears overrides; back to Auto for the rest of the run.
+      await page.selectOption('#gfx-preset', 'auto');
+      await presetIs('low');
+      if ((await page.inputValue('#gfx-cat-bloom')) !== 'preset') throw new Error('preset did not clear overrides');
+      await page.locator('#gfx-fps').uncheck();
+      await page.locator('#screen-settings [data-back]').click();
+      await page.waitForSelector('#screen-title.open');
+    });
+
     await step('journey stage 1 setup', async () => {
       await page.click('#btn-journey');
       await page.waitForSelector('#screen-setup.open');
@@ -229,9 +273,10 @@ async function playPass({ pass, viewport, hasTouch, mobile }) {
       await page.keyboard.press('1');
       await page.keyboard.press('ArrowRight'); // select plot 1
       await page.keyboard.press('Enter');      // plant turnip
-      const planted = await page.evaluate(() =>
+      // The snapshot is rewritten after the command lands; give a slow software-GL frame time to settle.
+      const planted = await page.waitForFunction(() =>
         window.MeadowRules.deserialize(JSON.parse(localStorage.getItem('meadowstead:snapshot')).state)
-          .plots.some((p) => p.crop && p.crop.type === 'turnip'));
+          .plots.some((p) => p.crop && p.crop.type === 'turnip'), null, { timeout: 5000 }).then(() => true, () => false);
       if (!planted) throw new Error('turnip was not planted via UI');
       await page.keyboard.press('?');
       const hint = (await page.textContent('#hint-banner')).trim();

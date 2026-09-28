@@ -27,11 +27,15 @@ same decision.
 | `index.html` | Single-page shell: HUD status bar, two rails, playfield, tool tray, all 11 screens, live regions |
 | `style.css` | Responsive grid shell, palette tokens, drawer behaviour, safe-area padding, screen overlays |
 | `js/rules.js` | Deterministic rules engine (UMD: `window.MeadowRules` in the browser, `module.exports` on the server). Pure, serializable, no DOM |
-| `js/render.js` | `window.MeadowRender` — Three.js scene, plot/crop meshes, selection and ghost layers, particles, quality tiers, palette shifts |
+| `js/render.js` | `window.MeadowRender` — Three.js scene, plot/crop meshes, selection and ghost layers, particles, palette shifts, graphics settings (`setGraphics`, `graphicsInfo`), post-processing chain, adaptive resolution |
+| `js/gfx.js` | Pure graphics quality model (no three.js): presets, per-category tiers, GPU detection (`detectPreset`), `resolve`, `presetTier`, `choosePreset`, `describe` |
+| `js/gfx-strings.js` | Settings → Graphics strings in all nine required locales plus `pickLocale` (browser language → shipped locale) |
+| `vendor/three/addons/` | three.js r185 addons matching the vendored core exactly: EffectComposer, Render/Shader/Output/GTAO/UnrealBloom/SMAA/FXAA passes, their shaders, RoomEnvironment (importmap `three/addons/`) |
 | `js/audio.js` | `window.MeadowAudio` — WebAudio buses, sampled one-shots with synth fallbacks, procedural ambience and music, caption dispatch |
 | `js/main.js` | Bootstrap, session lifecycle, UI refresh, input (pointer/keyboard/gamepad), tutorial, screens, persistence, platform adapter |
 | `server.js` | Authoritative server for local dev: static hosting plus `/api/v1` time, daily, scores (replay-validated), leaderboard, achievements, telemetry |
 | `tests/rules.test.js` | 18 `node --test` rules/determinism/content-validation tests (`npm test`) |
+| `tests/gfx.test.mjs` | 6 `node --test` tests for the graphics model and its locale table (`npm test`) |
 | `tests/e2e.mjs` | Playwright playthrough of the real UI at desktop and mobile viewports (`npm run test:e2e`) |
 | `tests/smoke.js` | Older manual smoke script kept for local debugging against a running server |
 | `sfx/` | 15 Opus clips, `manifest.txt` (canonical), `manifest.md` (rendered table), `manifest.json` (generator input) |
@@ -327,6 +331,34 @@ and animations, suppress particle bursts (`burst` returns immediately), drop the
 stop the idle pond/foliage and selection-ring animation in `frame`. Nothing is lost — every animated state
 also has a static form (ring colour, mirror icon, live-region text).
 
+**Graphics.** Lighting is ACES filmic tone-mapped with sRGB output: a warm key light casting PCF shadows
+from a shadow box fitted to the homestead (±12.5 × ±10.5 units), a hemisphere sky/grass fill and, with
+reflections on, image-based light from a PMREM-filtered `RoomEnvironment` (`scene.environmentIntensity`
+0.28, hemisphere eased to 0.7) so the clear-coated pond, pumpkins and roots pick up soft highlights. Scenery
+detail adds a procedural meadow texture (luminance only, so the season tint and colour-vision palettes still
+drive the hue), timber bed frames whose top sits just below the selection ring, instanced grass tufts,
+wildflowers and pond-edge stones, a chimney, door and lit cottage windows, and a scrolling ripple normal map on
+the pond. Ready crops wear an over-bright ring that blooms into a halo. Post-processing (only built when a
+setting needs it) runs RenderPass → GTAO contact shadows → UnrealBloom (threshold 0.92, so only windows,
+ready rings, pollen and glints glow) → OutputPass → a colour grade (gentle contrast-adding S-curve, +7%
+saturation, warm highlights/cool shadows, 0.2 vignette) → SMAA or FXAA; MSAA uses a multisampled target.
+Ambient motion — pond ripples, tree and crop sway, drifting pollen motes, larger particle bursts at High —
+stops under Reduced motion or the OS `prefers-reduced-motion` query. All layers are drawn by the camera;
+layers only scope raycasts to plots. **Settings → Graphics** (below the other settings, reachable from the
+title and pause menus) offers a Quality preset — Auto (chosen from the WebGL unmasked renderer: software
+renderers such as SwiftShader/llvmpipe get Low, discrete GPUs and Apple M-series High, everything else
+Balanced; touch devices cap Auto at Balanced), Low, Balanced, High, Ultra — a render scale (50–200 % of the
+preset's, which also caps the device pixel ratio at 1 / 1.5 / 2 / 2), one select per category with "From
+preset (…)" as default — shadows off/low/medium/high (1024²–4096²), ambient occlusion off/on/high, bloom,
+colour grade, anti-aliasing off/FXAA/SMAA/MSAA, reflections, pond water still/animated, wind sway, particles
+low/high, scenery detail plain/detailed — adaptive resolution (averages 90 frames; above 26 ms it steps the
+scale down 0.1 to a 0.6 floor, below 14 ms back up 0.05) and a frame-rate readout (top-left of the playfield,
+pointer-transparent), plus a summary line "GPU · cost · W×H px". Choosing a preset clears the overrides.
+Changes apply live and persist in `settings.gfx` (`meadowstead:settings`, cloud-saved with the rest); the
+canvas and `<body>` carry `data-gfx-preset`. Low renders straight to the canvas with no post chain, no shadows
+and DPR 1 × 0.85 — the same cost as before the upgrade. The addons load after first paint; if they or the
+post chain fail, the game renders without post-processing and the panel says so.
+
 **Visual assets the design calls for:** a title backdrop that says "restored homestead" before a word is
 read, a results illustration that pays off the harvest, a topsoil texture so plots read as tilled earth
 rather than brown boxes, and a cover matching the game's real palette. All four ship (§15).
@@ -392,7 +424,8 @@ buttons size to content, rails are `minmax(200px, 260px)`, prose caps at 70ch an
 to extra rows, and nothing is positioned by fixed pixel width. Numerals use `Intl.NumberFormat`; the daily
 date stays a UTC ISO string in every locale, because it is also a seed component.
 
-**Status:** the game currently ships US English only; `<html lang="en">` is static and there is no string
+**Status:** the Settings → Graphics section is localized in all nine locales (`js/gfx-strings.js`, picked
+from `navigator.languages`). The rest of the game currently ships US English only; `<html lang="en">` is static and there is no string
 table. This is the one required feature that is designed but not implemented — see §17.
 
 ---
@@ -474,8 +507,9 @@ trapping the player on a broken save. Server-side, JSON is written atomically (t
 which the static handler refuses to serve; per-IP buckets rate-limit scores (20/min), achievements (60/min)
 and telemetry (120/min); path traversal is blocked by a `ROOT + sep` prefix check.
 
-**Performance.** Quality tiers low (DPR 1, no shadows/particles, 0.85 render scale), medium (DPR 1.5,
-shadows, 200 particles) and high (DPR 2, shadows, 600), with a hard cap of 80 live particle meshes. A hidden
+**Performance.** Graphics presets (§8 Graphics) set the pixel-ratio cap, render scale, shadow-map size and
+post chain; adaptive resolution trims the pixel ratio on slow devices; burst particles have a hard cap of 80
+live meshes. A hidden
 tab renders nothing and drops audio timers to a 2 s heartbeat. Context loss cancels the loop; restore rebuilds
 the renderer from CPU-side descriptors and re-syncs instantly. Without WebGL, `#webgl-fallback` says the game
 stays fully playable through the field controls — and it is.
@@ -489,7 +523,10 @@ the orders drawer to reach a Fulfill button. It never calls game internals to ch
 
 ## 14. Testing and acceptance criteria
 
-**`npm test`** — 18 tests in `tests/rules.test.js`, all passing: deterministic replay (same seed + commands ⇒
+**`npm test`** — 18 tests in `tests/rules.test.js` plus 6 in `tests/gfx.test.mjs` (GPU-string → preset
+detection including the touch cap, resolve with presets/overrides/invalid tiers, render-scale clamp, preset
+choice clearing overrides, the cost summary, every locale carrying every Graphics string), all passing. The
+rules tests cover: deterministic replay (same seed + commands ⇒
 same hashes, different seeds diverge); the plant → water → harvest lifecycle, season legality (pumpkin is
 illegal in spring), withering after `WITHER_TICKS`, and craft/fulfil bookkeeping; invalid actions incrementing
 the counter **without consuming a tick** and duplicate ids rejecting idempotently; both terminal states with a
@@ -499,12 +536,15 @@ seeds** solvable and bounded by the `validateContent` bot (no soft locks, no unr
 configs are rejected; golden easy/normal/hard sessions terminating with sane scores; the hint API using
 exactly the play-time legal-action list; and daily seeds stable per date, distinct across dates.
 
-**`npm run test:e2e`** — two passes (desktop 1280×800, mobile 390×844 touch), both passing: title → Journey
+**`npm run test:e2e`** — two passes (desktop 1280×800, mobile 390×844 touch), both passing: title →
+Settings → Graphics (Auto resolves to Low on swiftshader; Ultra, Low and High applied live via
+`data-gfx-preset`; a bloom override removes bloom from the summary; the frame-rate readout appears; preset
+and override survive a reload; picking a preset clears the override) → Journey
 setup showing "Stage 1/40" → session with 8 plots at `Time 0/43` → a full greedy playthrough via real controls
 to results → 6 breakdown rows, a `goal-complete` headline, `journeyStage` advanced to 2 → retry, plant by
 keyboard, hint banner → snapshot `elapsedMs` surviving a reload through "Welcome back" → pause/resume →
-settings open, reduced motion applied, close → leave to title. **Any page error or non-benign console error
-fails the run.**
+settings open, reduced motion applied, close → leave to title. **Any page error or non-benign console error or
+warning fails the run.**
 
 **QA bar** (`agents/qa.md`), as checkable statements:
 

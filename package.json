@@ -1,7 +1,7 @@
 {
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/rules.test.js",
+    "test": "node --test tests/rules.test.js tests/gfx.test.mjs",
     "test:e2e": "node tests/e2e.mjs"
   },
   "dependencies": {
