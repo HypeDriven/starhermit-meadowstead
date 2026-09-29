@@ -610,3 +610,7 @@ there is no humanoid character to animate, so neither TRELLIS nor Kimodo has a s
    constant 420 ms step for the whole session.
 3. **Season-specific 3D dressing.** `SEASON_TINT` recolours sky, fog and ground, but tree canopies and the
    cottage do not change with the season, so autumn reads as a colour grade rather than a different field.
+
+## Browser interference
+
+`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
