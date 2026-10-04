@@ -11,10 +11,9 @@
  *   mobile (where the mirror is hidden by the portrait media query) plots are
  *   driven with the game's keyboard controls (arrows + Enter).
  *
- * Self-contained: starts its own static server on an ephemeral port and stubs
- * the /api/v1 platform endpoints (time/telemetry/achievements) so the game's
- * online probe succeeds without the authoritative server. The repo's server.js
- * is the StarHermit authoritative server and is intentionally NOT used here.
+ * Self-contained: starts its own plain static server on an ephemeral port
+ * (no /api routes). A standalone load must make zero same-origin /api or /ws
+ * requests; each pass asserts that.
  *
  * Screenshots land in /tmp/meadowstead-e2e-<stage>-<desktop|mobile>.png.
  */
@@ -40,13 +39,6 @@ const MIME = {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  // stub platform API so the client's online probe succeeds offline
-  if (url.pathname.startsWith('/api/v1/')) {
-    const body = url.pathname === '/api/v1/time' ? { now: Date.now() } : { ok: true, rows: [] };
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(body));
-    return;
-  }
   let pathname = decodeURIComponent(url.pathname);
   if (pathname.endsWith('/')) pathname += 'index.html';
   const file = path.normalize(path.join(ROOT, pathname));
@@ -87,6 +79,11 @@ async function playPass({ pass, viewport, hasTouch, mobile }) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('request', (r) => {
+    const u = new URL(r.url());
+    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${r.method()} ${u.pathname}`);
+  });
+  page.on('websocket', (ws) => errors.push(`websocket opened: ${ws.url()}`));
   page.on('console', (m) => {
     if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
   });

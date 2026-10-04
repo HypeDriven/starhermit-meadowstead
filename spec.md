@@ -32,10 +32,14 @@ same decision.
 | `js/gfx-strings.js` | Settings → Graphics strings in all nine required locales plus `pickLocale` (browser language → shipped locale) |
 | `vendor/three/addons/` | three.js r185 addons matching the vendored core exactly: EffectComposer, Render/Shader/Output/GTAO/UnrealBloom/SMAA/FXAA passes, their shaders, RoomEnvironment (importmap `three/addons/`) |
 | `js/audio.js` | `window.MeadowAudio` — WebAudio buses, sampled one-shots with synth fallbacks, procedural ambience and music, caption dispatch |
-| `js/main.js` | Bootstrap, session lifecycle, UI refresh, input (pointer/keyboard/gamepad), tutorial, screens, persistence, platform adapter |
-| `server.js` | Authoritative server for local dev: static hosting plus `/api/v1` time, daily, scores (replay-validated), leaderboard, achievements, telemetry |
+| `js/main.js` | Bootstrap, session lifecycle, UI refresh, input (pointer/keyboard/gamepad), tutorial, screens, persistence |
+| `js/platform.js` | StarHermit adapter over the SDK: identity, cloud save, settings KV, bindings, friends, sign-in/invite, read-only leaderboard; no own-server calls |
+| `js/sh-strings.js` | Account strings in the nine locales |
+| `starhermit-sdk.js` | Shared StarHermit client (unmodified copy) |
+| `server.js` | Local static host; its legacy `/api/v1` routes are not called by the client |
 | `tests/rules.test.js` | 18 `node --test` rules/determinism/content-validation tests (`npm test`) |
 | `tests/gfx.test.mjs` | 6 `node --test` tests for the graphics model and its locale table (`npm test`) |
+| `tests/platform.test.mjs` | 3 `node --test` tests: the StarHermit adapter over the real SDK with a stubbed fetch (`npm test`) |
 | `tests/e2e.mjs` | Playwright playthrough of the real UI at desktop and mobile viewports (`npm run test:e2e`) |
 | `tests/smoke.js` | Older manual smoke script kept for local debugging against a running server |
 | `sfx/` | 15 Opus clips, `manifest.txt` (canonical), `manifest.md` (rendered table), `manifest.json` (generator input) |
@@ -456,27 +460,45 @@ table. This is the one required feature that is designed but not implemented —
 `starhermit.txt` declares `name=Meadowstead`, `launch=index.html`, `server=server.js`, `cover=coverart.png`;
 conventions follow https://wiki.starhermit.com/.
 
-**Used (hosted, launch token):** the **launch token** arrives in the URL fragment `#game_token=<jwt>`, is read
-once and stripped (`history.replaceState`); its payload gives `sub` and `game_scope` (the slug — never
-hard-coded). `Authorization: Bearer <token>` rides on every REST call, re-minted every 45 min via
-`POST /api/v1/games/{slug}/launch-token` (60 s retry on failure). **Identity** is the account nickname from
-`GET /api/v1/users/{sub}/profile` (never `/api/v1/me`, never usernames; `"Player "+id8` fallback), shown in the
-status-bar name chip, on the local board rows, and on the profile screen. **Cloud save**: one slot at
-`GET`/`PUT /api/v1/me/cloud-saves/{slug}` as a stored zip (no compression) of `{progress, settings, snapshot}`
-base64-encoded; loads prefer the remote copy on conflict, saves debounce 2 s and flush on `pagehide`, and a
-sync chip (synced/saving/offline) sits in the status bar. `localStorage` remains the offline cache.
-**Leaderboards** are read-only on-platform: `GET /api/v1/games/{slug}` → `leaderboardId`, then
-`GET /api/v1/leaderboards/{leaderboardId}/entries?friendsOnly=` with userIds resolved to nicknames; friends
-come from `GET /api/v1/me/friends`. Ranked results are kept as personal bests (local board + cloud save) —
-clients never submit scores. **Achievements** stay local (part of the cloud-saved progress doc); this game's
-server.js is not a Jint game script, so there is no script-owned unlock path.
+All platform calls go through the shared client `starhermit-sdk.js` (loaded before the game scripts) via
+the adapter `js/platform.js`; hosted mode means signed in. `starhermit.txt` also lists one
+`control.<action>=<Code> | <Label>` line per keyboard action (plot movement, activate, three seed tools,
+water, harvest, wait, undo, pause, hint, camera, back).
 
-**Used (local dev, no token):** `server.js` hosts the client and serves `/api/v1/{time,daily,scores,
-leaderboard,achievements,telemetry}` same-origin; `/time` is probed on boot (round-trip-adjusted into
-`platform.timeOffset`, so daily logic never reads the device clock); ranked rows are accepted only after the
-server replays the command log to a matching initial hash, final hash and score; achievements are idempotent
-per session id; telemetry is anonymous and best-effort. Query-param `?launchToken=`/`?token=` fallbacks exist
-for local dev only. **Deliberately not used:** real-time multiplayer, matchmaking, chat and purchases.
+**Used (hosted):**
+- **Launch token + renewal** — `StarHermit.init()` reads `#game_token=` (library launch) or `#access_token=`
+  (sign-in return) once, strips it and renews it before expiry. If renewal is refused the game toasts
+  "signed out", hides the name/sync chips and the invite button, and keeps playing and saving locally.
+- **Sign-in** — on `<id>.starhermit.com` without a token the title shows **Sign in with StarHermit**;
+  hidden when signed in and when running locally.
+- **Identity** — the profile `nickname` (never `/api/v1/me`, never usernames; `Player <id prefix>`
+  fallback), shown in the status-bar name chip, on the local board rows, and on the profile screen.
+- **Cloud save** — `{progress, settings, snapshot}` in the `game:<slug>` cloud-save slot; loads prefer the
+  remote copy when it is newer, saves debounce 2 s and flush with keepalive on `pagehide`/hidden tab, and a
+  sync chip (synced/saving/offline) sits in the status bar. `localStorage` remains the offline cache.
+- **Settings KV** — every preference (volumes, mute, graphics, motion, contrast, palette, text scale,
+  left-handed, hold-to-confirm, timing assist, haptics, captions, camera shake …) is patched to the
+  per-player settings store when it changes (changed keys only); at boot the stored values override the
+  local / cloud copy.
+- **Controls** — keyboard input is routed by `event.code` through `StarHermit.loadBindings()` (defaults =
+  the manifest lines); the tool-tray key hints and the Help "Controls" card show the effective keys.
+- **Friends** — the Friends screen lists platform friends (nicknames via profiles, online dot) with their
+  best score on the platform board.
+- **Invite link** — signed-in players get **Invite a friend** on the title, copying
+  `StarHermit.inviteLink()` with a confirmation toast.
+- **Leaderboards** are read-only: the game's first platform board (global, or filtered to friends) when
+  one exists; ranked results are kept as personal bests (local board + cloud save) — clients never submit
+  scores. **Achievements** stay local (part of the cloud-saved progress doc); `server.js` is a standalone
+  Node host, not a platform game script, so there is no server-owned unlock path.
+
+Account strings (sign-in, invite, toasts) are localized in the nine locales (`js/sh-strings.js`).
+
+**Standalone (no token):** the client makes no network request beyond its own static files — no time
+probe, daily, scores, leaderboard, achievements or telemetry. The UTC day comes from the device clock;
+ranked runs are replay-checked and kept on the local board; achievements and the funnel log stay in
+localStorage. `server.js` (with its legacy `/api/v1` routes) is only a local static host. Query-param
+`?game_token=` exists for local dev only. **Deliberately not used:** platform sessions, real-time multiplayer, matchmaking, chat, replays and
+purchases.
 Meadowstead is a solo puzzle whose only shared surface is a seed and a score.
 
 **Offline is a first-class path.** With no token (or unreachable dev server), `platform.hosted` stays false:
@@ -489,7 +511,8 @@ says plainly that the rows are offline and local.
 **Module boundaries.** `rules.js` knows nothing of the DOM, `THREE` or audio and is loaded unchanged by Node
 on the server — that is what makes authoritative replay possible. `render.js` is a pure projection of rules
 state: `sync` diffs a per-plot key (`crop|stage|ready`) and rebuilds only what changed. `audio.js` owns the
-`AudioContext` and nothing else. `main.js` is the only module touching `localStorage`, `fetch` or the DOM.
+`AudioContext` and nothing else. `main.js` is the only module touching `localStorage` or the DOM; `platform.js` (over the SDK) owns every
+platform call.
 
 **Determinism and replay.** State is plain JSON and `stableStringify` sorts keys before hashing, so
 `stateHash` is order-independent. The results envelope carries `{schemaVersion, contentVersion, build, mode,
@@ -514,8 +537,8 @@ tab renders nothing and drops audio timers to a 2 s heartbeat. Context loss canc
 the renderer from CPU-side descriptors and re-syncs instantly. Without WebGL, `#webgl-fallback` says the game
 stays fully playable through the field controls — and it is.
 
-**How the e2e drives the real UI.** `tests/e2e.mjs` starts its own static server on an ephemeral port, stubs
-`/api/v1`, and launches system Chrome with swiftshader. It picks each move with the validator bot's greedy
+**How the e2e drives the real UI.** `tests/e2e.mjs` starts its own plain static server on an ephemeral port
+(no `/api`; any same-origin `/api` or `/ws` request fails the pass), and launches system Chrome with swiftshader. It picks each move with the validator bot's greedy
 strategy, reading state from the game's *own persisted snapshot*, then performs it through real UI — tool
 buttons and mirror clicks on desktop; tool keys and arrow/Enter navigation on mobile, where it must also open
 the orders drawer to reach a Fulfill button. It never calls game internals to change state.
@@ -523,7 +546,7 @@ the orders drawer to reach a Fulfill button. It never calls game internals to ch
 
 ## 14. Testing and acceptance criteria
 
-**`npm test`** — 18 tests in `tests/rules.test.js` plus 6 in `tests/gfx.test.mjs` (GPU-string → preset
+**`npm test`** — 18 tests in `tests/rules.test.js`, 3 in `tests/platform.test.mjs` (token, nickname, `game:<slug>` cloud save, settings KV, bindings, friends, invite, zero fetches standalone) plus 6 in `tests/gfx.test.mjs` (GPU-string → preset
 detection including the touch cap, resolve with presets/overrides/invalid tiers, render-scale clamp, preset
 choice clearing overrides, the cost summary, every locale carrying every Graphics string), all passing. The
 rules tests cover: deterministic replay (same seed + commands ⇒
@@ -556,8 +579,8 @@ warning fails the run.**
 4. Nothing is cut off at 1280×800 or 390×844 portrait; screens scroll rather than clip, and the results
    illustration drops below 640 px of height so the score table always fits. ✅
 5. Platform APIs are used where they apply: hosted — launch token (fragment, Bearer, 45-min refresh), profile
-   nickname, cloud save slot, read-only leaderboard + friends; local dev — time, replay-validated scores,
-   leaderboards, achievements, telemetry. ✅
+   nickname, cloud save slot, read-only leaderboard + friends; standalone — no network calls (local
+   clock, boards and achievements). ✅
 6. Localization: **not met** — see §17.
 
 **Acceptance for any change:** `node --check` passes on every JS/MJS file, `npm test` is green,

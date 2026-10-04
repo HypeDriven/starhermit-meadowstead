@@ -234,3 +234,14 @@ body.high-contrast #screens #screen-title.open { background-image: none; backgro
   * { transition: none !important; animation: none !important; }
 }
 body.reduced-motion * { transition: none !important; animation: none !important; }
+
+/* StarHermit account row (title) + toast */
+.title-row:not(:has(.btn:not([hidden]))) { display: none; }
+.sh-toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + var(--sab)); z-index: 60;
+  max-width: min(92vw, 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
+  background: var(--panel); color: var(--ink); border: 2px solid var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25); text-align: center;
+}
+.sh-toast[hidden] { display: none; }

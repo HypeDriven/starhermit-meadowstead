@@ -14,6 +14,7 @@
 } }
 </script>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#playfield">Skip to playfield</a>
@@ -77,14 +78,14 @@
 
   <!-- ============ Bottom tool tray ============ -->
   <nav id="tooltray" aria-label="Tools">
-    <button class="tool btn" data-tool="plant" data-crop="turnip" aria-keyshortcuts="1">🌱 Turnip <kbd>1</kbd></button>
-    <button class="tool btn" data-tool="plant" data-crop="carrot" aria-keyshortcuts="2">🥕 Carrot <kbd>2</kbd></button>
-    <button class="tool btn" data-tool="plant" data-crop="pumpkin" aria-keyshortcuts="3">🎃 Pumpkin <kbd>3</kbd></button>
-    <button class="tool btn" data-tool="water" aria-keyshortcuts="W">💧 Water <kbd>W</kbd></button>
-    <button class="tool btn" data-tool="harvest" aria-keyshortcuts="H">🧺 Harvest <kbd>H</kbd></button>
-    <button class="tool btn" data-tool="wait" aria-keyshortcuts="Space">⏳ Wait <kbd>␣</kbd></button>
-    <button id="btn-undo" class="tool btn" aria-keyshortcuts="U">↩ Undo <kbd>U</kbd></button>
-    <button id="btn-hint" class="tool btn" aria-keyshortcuts="?">💡 Hint <kbd>?</kbd></button>
+    <button class="tool btn" data-tool="plant" data-crop="turnip" aria-keyshortcuts="1">🌱 Turnip <kbd data-key="turnip">1</kbd></button>
+    <button class="tool btn" data-tool="plant" data-crop="carrot" aria-keyshortcuts="2">🥕 Carrot <kbd data-key="carrot">2</kbd></button>
+    <button class="tool btn" data-tool="plant" data-crop="pumpkin" aria-keyshortcuts="3">🎃 Pumpkin <kbd data-key="pumpkin">3</kbd></button>
+    <button class="tool btn" data-tool="water" aria-keyshortcuts="W">💧 Water <kbd data-key="water">W</kbd></button>
+    <button class="tool btn" data-tool="harvest" aria-keyshortcuts="H">🧺 Harvest <kbd data-key="harvest">H</kbd></button>
+    <button class="tool btn" data-tool="wait" aria-keyshortcuts="Space">⏳ Wait <kbd data-key="wait">␣</kbd></button>
+    <button id="btn-undo" class="tool btn" aria-keyshortcuts="U">↩ Undo <kbd data-key="undo">U</kbd></button>
+    <button id="btn-hint" class="tool btn" aria-keyshortcuts="?">💡 Hint <kbd data-key="hint">?</kbd></button>
   </nav>
 
   <!-- ============ Screens ============ -->
@@ -102,6 +103,10 @@
       <div class="title-row">
         <button id="btn-help-title" class="btn">❓ Help</button>
         <button id="btn-settings-title" class="btn">⚙ Settings</button>
+      </div>
+      <div class="title-row">
+        <button id="btn-signin" class="btn" hidden>Sign in with StarHermit</button>
+        <button id="btn-invite" class="btn" hidden>Invite a friend</button>
       </div>
     </section>
 
@@ -228,6 +233,7 @@
 <script src="js/rules.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/render.js"></script>
+<p id="sh-toast" class="sh-toast" role="status" aria-live="polite" hidden></p>
 <script type="module" src="js/main.js?v=production-qa-1"></script>
 </body>
 </html>

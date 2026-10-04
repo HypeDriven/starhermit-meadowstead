@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import * as GFX from './gfx.js';
 import { gfxText, pickLocale } from './gfx-strings.js';
+import { createPlatform } from './platform.js';
+import { shStrings } from './sh-strings.js';
 
 const R = window.MeadowRules;
 const Audio = window.MeadowAudio;
@@ -47,298 +49,49 @@ let progress = store.get('progress', {
   tutorialDone: false, friends: [], localBoard: [],
 });
 
-/* ================= platform adapter ================= */
-// Minimal ZIP writer/reader (stored entries only, no compression).
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
+/* ================= platform adapter (js/platform.js over starhermit-sdk.js) ================= */
+function applyCloudDoc(doc) {
+  if (!doc || typeof doc !== 'object') return;
+  if (doc.progress && typeof doc.progress === 'object') {
+    progress = Object.assign({}, progress, doc.progress);
+    store.set('progress', progress);
   }
-  return t;
-})();
-function crc32(bytes) {
-  let c = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-function zipStore(name, dataBytes) {
-  const enc = new TextEncoder();
-  const nameB = enc.encode(name);
-  const crc = crc32(dataBytes);
-  const out = [];
-  const u16 = (v) => out.push(v & 0xff, (v >> 8) & 0xff);
-  const u32 = (v) => out.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-  u32(0x04034b50); u16(20); u16(0); u16(0); u16(0); u16(0);
-  u32(crc); u32(dataBytes.length); u32(dataBytes.length);
-  u16(nameB.length); u16(0);
-  const local = out.length;
-  const head = new Uint8Array(out);
-  const cd = [];
-  const c16 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff);
-  const c32 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-  c32(0x02014b50); c16(20); c16(20); c16(0); c16(0); c16(0); c16(0);
-  c32(crc); c32(dataBytes.length); c32(dataBytes.length);
-  c16(nameB.length); c16(0); c16(0); c16(0); c16(0); c32(0); c32(0); // attrs + local-header offset
-  const cdHead = new Uint8Array(cd);
-  const cdOff = head.length + nameB.length + dataBytes.length;
-  const parts = [head, nameB, dataBytes, cdHead, nameB];
-  const eocd = [];
-  const e32 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-  const e16 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff);
-  e32(0x06054b50); e16(0); e16(0); e16(1); e16(1);
-  e32(cdHead.length + nameB.length); e32(cdOff); e16(0);
-  parts.push(new Uint8Array(eocd));
-  const total = parts.reduce((n, p) => n + p.length, 0);
-  const buf = new Uint8Array(total);
-  let o = 0;
-  for (const p of parts) { buf.set(p, o); o += p.length; }
-  return buf;
-}
-function unzipFirstEntry(zipBytes) {
-  // Stored single-entry reader: scan local headers for compression 0.
-  const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
-  let off = 0;
-  while (off + 30 <= zipBytes.length && dv.getUint32(off, true) === 0x04034b50) {
-    const method = dv.getUint16(off + 8, true);
-    const size = dv.getUint32(off + 18, true);
-    const nameLen = dv.getUint16(off + 26, true);
-    const extraLen = dv.getUint16(off + 28, true);
-    const dataOff = off + 30 + nameLen + extraLen;
-    if (method !== 0) throw new Error('unsupported zip entry');
-    return zipBytes.slice(dataOff, dataOff + size);
+  if (doc.settings && typeof doc.settings === 'object') {
+    settings = Object.assign({}, DEFAULT_SETTINGS, doc.settings);
+    settings.volumes = Object.assign({}, DEFAULT_SETTINGS.volumes, settings.volumes || {});
+    if (!settings.gfx || typeof settings.gfx !== 'object') settings.gfx = {};
+    store.set('settings', settings);
+    applySettings();
   }
-  throw new Error('bad zip');
+  if (doc.snapshot) store.set('snapshot', doc.snapshot);
 }
-function bytesToBase64(bytes) {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000)
-    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-function base64ToBytes(b64) {
-  const s = atob(b64);
-  const b = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
-  return b;
-}
-function b64urlJson(s) {
-  s = String(s).replace(/-/g, '+').replace(/_/g, '/');
-  while (s.length % 4) s += '=';
-  return JSON.parse(atob(s));
-}
-
-const platform = {
-  online: false, // its own dev server (server.js) reachable — local play only
-  hosted: false, // launched by StarHermit: a fragment launch token was read
-  timeOffset: 0,
-  token: null,   // launch token, read once from the URL fragment, never persisted
-  userId: null,  // JWT sub
-  gameSlug: 'meadowstead', // replaced by the token's game_scope for hosted calls
-  _name: null,
-  _refreshTimer: null,
-  _cloudTimer: null,
-  _cloudDirty: false,
-  sync: 'offline', // synced | saving | offline — shown in the sync chip
-
-  readLaunchToken() {
-    // StarHermit hands the launch token in the URL fragment: #game_token=<jwt>(&session_id=…)
-    const hash = (location.hash || '').replace(/^#/, '');
-    const m = /(?:^|&)game_token=([^&]+)/.exec(hash);
-    if (m) {
-      this.token = decodeURIComponent(m[1]);
-      // read once, then strip it from the URL
-      history.replaceState(null, '', location.pathname + location.search);
-    } else {
-      // local dev only: its own server.js has no launcher
-      const params = new URLSearchParams(location.search);
-      this.token = params.get('launchToken') || params.get('token') || null;
-    }
-    if (!this.token) return;
-    this.hosted = true;
-    this.online = true;
-    try {
-      const payload = b64urlJson(this.token.split('.')[1]);
-      this.userId = payload.sub || null;
-      if (payload.game_scope) this.gameSlug = payload.game_scope;
-    } catch { /* malformed payload: defaults above keep the game playable */ }
-  },
-
-  async init() {
-    this.readLaunchToken();
-    if (this.hosted) {
-      // no /time probe on-platform (not a platform route); the device clock is the fallback
-      this.fetchProfile(); // not awaited: the name chip fills in when it resolves
-      this.scheduleRefresh();
-      this.setSync('saving');
-      await this.cloudLoad(); // remote-preferred; localStorage stays the offline cache
-      return;
-    }
-    try {
-      const t0 = Date.now();
-      const res = await fetch('/api/v1/time', { signal: AbortSignal.timeout(3000) });
-      if (!res.ok) throw new Error('time-' + res.status);
-      const body = await res.json();
-      this.timeOffset = body.now - (t0 + Date.now()) / 2; // round-trip adjusted
-      this.online = true;
-    } catch { this.online = false; this.timeOffset = 0; }
-  },
-  now() { return Date.now() + this.timeOffset; },
-  utcDate() { return new Date(this.now()).toISOString().slice(0, 10); },
-
-  async api(path, opts) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (this.token) headers.Authorization = 'Bearer ' + this.token;
-    const res = await fetch('/api/v1' + path, Object.assign({ headers }, opts));
-    const body = await res.json().catch(() => ({}));
-    if (res.status === 429) throw Object.assign(new Error('rate-limited'), { code: 'rate-limited' });
-    if (!res.ok) throw Object.assign(new Error(body.error || ('http-' + res.status)), { code: body.error });
-    return body;
-  },
-
-  scheduleRefresh() {
-    // launch tokens live 60 min; re-mint every 45, retry failures ~60 s
-    clearTimeout(this._refreshTimer);
-    this._refreshTimer = setTimeout(() => this.refreshToken(), 45 * 60 * 1000);
-  },
-  async refreshToken() {
-    if (!this.token) return;
-    try {
-      const res = await fetch('/api/v1/games/' + encodeURIComponent(this.gameSlug) + '/launch-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.token },
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.token) throw new Error(body.error || ('http-' + res.status));
-      this.token = body.token;
-      this.scheduleRefresh();
-    } catch {
-      this._refreshTimer = setTimeout(() => this.refreshToken(), 60000);
-    }
-  },
-
-  async fetchProfile() {
-    if (this.userId) {
-      try {
-        const p = await this.api('/users/' + encodeURIComponent(this.userId) + '/profile');
-        this._name = p.nickname || null; // nickname only — never the username
-      } catch { /* fallback name below */ }
-    }
+const platform = createPlatform({
+  store,
+  buildDoc: () => ({ schema: 1, savedAt: Date.now(), progress, settings, snapshot: store.get('snapshot', null) }),
+  applyDoc: applyCloudDoc,
+  onIdentity: () => updateIdentityUI(),
+  onAuth: (a) => {
     updateIdentityUI();
+    refreshAccountButtons();
+    if (!a.signedIn) toastShort(shT.signedOut); // keep playing locally
   },
-  displayName() {
-    if (this._name) return this._name;
-    if (this.userId) return 'Player ' + String(this.userId).slice(0, 8);
-    return 'You';
-  },
+  syncEl: () => $('sb-sync'),
+});
+const shT = shStrings(navigator.languages || [navigator.language]);
 
-  /* ---- cloud save: ONE zip+base64 slot; localStorage stays the offline cache ---- */
-  buildCloudDoc() {
-    return { schema: 1, savedAt: Date.now(), progress, settings, snapshot: store.get('snapshot', null) };
-  },
-  applyCloudDoc(doc) {
-    if (!doc || typeof doc !== 'object') return;
-    if (doc.progress && typeof doc.progress === 'object') {
-      progress = Object.assign({}, progress, doc.progress);
-      store.set('progress', progress);
-    }
-    if (doc.settings && typeof doc.settings === 'object') {
-      settings = Object.assign({}, DEFAULT_SETTINGS, doc.settings);
-      settings.volumes = Object.assign({}, DEFAULT_SETTINGS.volumes, settings.volumes || {});
-      if (!settings.gfx || typeof settings.gfx !== 'object') settings.gfx = {};
-      store.set('settings', settings);
-      applySettings();
-    }
-    if (doc.snapshot) store.set('snapshot', doc.snapshot);
-  },
-  async cloudLoad() {
-    if (!this.hosted || !this.token) return;
-    try {
-      const res = await fetch('/api/v1/me/cloud-saves/' + encodeURIComponent(this.gameSlug), {
-        headers: { Authorization: 'Bearer ' + this.token },
-      });
-      if (res.status === 404) { this.setSync('synced'); return; } // no cloud save yet
-      if (!res.ok) throw new Error('http-' + res.status);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      const doc = JSON.parse(new TextDecoder().decode(unzipFirstEntry(bytes)));
-      // on conflict prefer the remote copy
-      const meta = store.get('cloud-meta', null);
-      if (!meta || !doc.savedAt || doc.savedAt > meta.savedAt) {
-        this.applyCloudDoc(doc);
-        store.set('cloud-meta', { savedAt: doc.savedAt || Date.now() });
-      }
-      this.setSync('synced');
-    } catch { this.setSync('offline'); } // the local cache wins silently
-  },
-  cloudSaveSoon() {
-    if (!this.hosted) return;
-    this._cloudDirty = true;
-    this.setSync('saving');
-    clearTimeout(this._cloudTimer);
-    this._cloudTimer = setTimeout(() => this.cloudSave(false), 2000); // debounced
-  },
-  cloudFlush() {
-    if (!this.hosted || !this._cloudDirty) return;
-    clearTimeout(this._cloudTimer);
-    this.cloudSave(true); // pagehide/visibilitychange: best-effort keepalive PUT
-  },
-  async cloudSave(flush) {
-    if (!this.hosted || !this.token) return;
-    this._cloudDirty = false;
-    const doc = this.buildCloudDoc();
-    try {
-      const b64 = bytesToBase64(zipStore('save.json', new TextEncoder().encode(JSON.stringify(doc))));
-      const opts = {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.token },
-        body: JSON.stringify({ dataBase64: b64 }),
-      };
-      if (flush) opts.keepalive = true;
-      const res = await fetch('/api/v1/me/cloud-saves/' + encodeURIComponent(this.gameSlug), opts);
-      if (!res.ok) throw new Error('http-' + res.status);
-      store.set('cloud-meta', { savedAt: doc.savedAt });
-      this.setSync('synced');
-    } catch {
-      this._cloudDirty = true;
-      this.setSync('offline'); // localStorage still has everything; retried on the next change
-    }
-  },
-
-  /* ---- platform leaderboard (read-only; ranked boards are script-owned) ---- */
-  async leaderboardEntries(friendsOnly) {
-    const info = await this.api('/games/' + encodeURIComponent(this.gameSlug));
-    if (!info.leaderboardId) return []; // no platform board for this game: local records only
-    const res = await this.api('/leaderboards/' + encodeURIComponent(info.leaderboardId) +
-      '/entries?friendsOnly=' + (friendsOnly ? 1 : 0) + '&page=1&pageSize=20');
-    const entries = res.entries || res.rows || [];
-    const rows = [];
-    for (const e of entries.slice(0, 20)) {
-      const uid = e.userId != null ? e.userId : e.user_id;
-      rows.push({
-        userId: uid,
-        name: String(uid) === String(this.userId) ? this.displayName() : await this.nicknameFor(uid),
-        score: e.score != null ? e.score : (e.bestScore != null ? e.bestScore : 0),
-      });
-    }
-    return rows;
-  },
-  async nicknameFor(userId) {
-    if (userId == null) return 'Player';
-    try {
-      const p = await this.api('/users/' + encodeURIComponent(userId) + '/profile');
-      return p.nickname || ('Player ' + String(userId).slice(0, 8));
-    } catch { return 'Player ' + String(userId).slice(0, 8); }
-  },
-
-  setSync(state) {
-    this.sync = state;
-    const el = $('sb-sync');
-    if (!el) return;
-    el.hidden = !this.hosted;
-    el.textContent = { synced: '☁ synced', saving: '☁ saving…', offline: '☁ offline' }[state] || ('☁ ' + state);
-  },
-};
+// Sign-in (platform host, no token) / invite (signed in); hidden locally.
+function refreshAccountButtons() {
+  $('btn-signin').hidden = !platform.canSignIn();
+  $('btn-invite').hidden = !platform.hosted;
+}
+let toastTimer = null;
+function toastShort(text) {
+  const el = $('sh-toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+}
 
 function updateIdentityUI() {
   const chip = $('sb-player');
@@ -356,11 +109,7 @@ const analytics = {
     const line = { t: Date.now(), event, data: data || {} };
     const buf = store.get('funnel', []);
     buf.push(line);
-    store.set('funnel', buf.slice(-200));
-    if (!platform.hosted && platform.online) {
-      // /telemetry is this game's own dev-server route; the platform has none — never call it hosted
-      platform.api('/telemetry', { method: 'POST', body: JSON.stringify(line) }).catch(() => {});
-    }
+    store.set('funnel', buf.slice(-200)); // local only — no telemetry endpoint exists
   },
 };
 
@@ -381,9 +130,7 @@ function unlockAchievement(key) {
   announce('Achievement unlocked: ' + (ACHIEVEMENTS.find(a => a.key === key) || {}).name);
   const el = $('achievements-earned');
   if (el) el.textContent = '🏅 ' + (ACHIEVEMENTS.find(a => a.key === key) || {}).name;
-  // achievements stay local on-platform (part of the cloud-saved progress doc);
-  // /achievements below is this game's own dev-server route only
-  if (!platform.hosted && platform.online) platform.api('/achievements', { method: 'POST', body: JSON.stringify({ key }) }).catch(() => {});
+  // achievements stay local (part of the cloud-saved progress doc when signed in)
   return true;
 }
 function saveProgress() { store.set('progress', progress); platform.cloudSaveSoon(); }
@@ -533,19 +280,8 @@ const session = {
       setSubmissionNote('Ranked boards are validated platform-side — your score was kept as a personal best and synced to your cloud save.');
       return;
     }
-    if (platform.online) {
-      try {
-        envelope.playerName = platform.displayName();
-        const res = await platform.api('/scores', { method: 'POST', body: JSON.stringify(envelope) });
-        setSubmissionNote(res.accepted ? 'Score validated and submitted to the ranked board.' : 'Score rejected: ' + (res.error || 'validation failed'));
-      } catch (e) {
-        submitLocal(envelope);
-        setSubmissionNote('Score saved locally (server unavailable: ' + e.message + ').');
-      }
-    } else {
-      submitLocal(envelope);
-      setSubmissionNote('Offline: score recorded on the local casual board.');
-    }
+    submitLocal(envelope);
+    setSubmissionNote('Score recorded on the local board.');
   },
 
   snapshotSave() {
@@ -903,7 +639,8 @@ function setupInput() {
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const anyScreen = document.querySelector('#screens .screen.open');
-    if (e.key === 'Escape') {
+    const act = codeToAction.get(e.code);
+    if (act === 'back') {
       // an open drawer covers its own toggle on phones, so Escape must dismiss it first
       if (!anyScreen && drawersOpen()) closeDrawers();
       else if (anyScreen) backScreen();
@@ -914,32 +651,31 @@ function setupInput() {
     if (!session.state || session.state.terminalReason) return;
     // Enter/Space on a focused control belongs to that control — handling it here
     // as well would fire the button and a plot action from one keypress.
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('button, select, a[href]')) return;
+    if ((act === 'activate' || act === 'wait') && e.target.closest && e.target.closest('button, select, a[href]')) return;
     const st = session.state;
     const cols = 4;
-    const rows = Math.ceil(st.plots.length / cols);
-    switch (e.key) {
-      case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown': {
+    switch (act) {
+      case 'left': case 'right': case 'up': case 'down': {
         e.preventDefault();
         let i = selectedPlot < 0 ? 0 : selectedPlot;
-        if (e.key === 'ArrowLeft') i = (i + st.plots.length - 1) % st.plots.length;
-        if (e.key === 'ArrowRight') i = (i + 1) % st.plots.length;
-        if (e.key === 'ArrowUp') i = (i + st.plots.length - cols) % st.plots.length;
-        if (e.key === 'ArrowDown') i = (i + cols) % st.plots.length;
+        if (act === 'left') i = (i + st.plots.length - 1) % st.plots.length;
+        if (act === 'right') i = (i + 1) % st.plots.length;
+        if (act === 'up') i = (i + st.plots.length - cols) % st.plots.length;
+        if (act === 'down') i = (i + cols) % st.plots.length;
         selectPlot(i);
         break;
       }
-      case 'Enter': if (selectedPlot >= 0) activatePlot(selectedPlot); break;
-      case '1': setTool(document.querySelector('[data-crop="turnip"]')); break;
-      case '2': setTool(document.querySelector('[data-crop="carrot"]')); break;
-      case '3': setTool(document.querySelector('[data-crop="pumpkin"]')); break;
-      case 'w': case 'W': setTool(document.querySelector('[data-tool="water"]')); break;
-      case 'h': case 'H': setTool(document.querySelector('[data-tool="harvest"]')); break;
-      case ' ': e.preventDefault(); session.command({ type: 'wait' }); break;
-      case 'u': case 'U': session.undo(); break;
-      case 'p': case 'P': pauseGame(); break;
-      case '?': showHint(); break;
-      case 'c': case 'C': if (renderer) { renderer.camera.position.copy(renderer.CAM_POS); renderer.camera.lookAt(renderer.CAM_LOOK); } break;
+      case 'activate': if (selectedPlot >= 0) activatePlot(selectedPlot); break;
+      case 'turnip': setTool(document.querySelector('[data-crop="turnip"]')); break;
+      case 'carrot': setTool(document.querySelector('[data-crop="carrot"]')); break;
+      case 'pumpkin': setTool(document.querySelector('[data-crop="pumpkin"]')); break;
+      case 'water': setTool(document.querySelector('[data-tool="water"]')); break;
+      case 'harvest': setTool(document.querySelector('[data-tool="harvest"]')); break;
+      case 'wait': e.preventDefault(); session.command({ type: 'wait' }); break;
+      case 'undo': session.undo(); break;
+      case 'pause': pauseGame(); break;
+      case 'hint': showHint(); break;
+      case 'camera': if (renderer) { renderer.camera.position.copy(renderer.CAM_POS); renderer.camera.lookAt(renderer.CAM_LOOK); } break;
     }
   });
 
@@ -1167,8 +903,46 @@ function openSetup(mode) {
   };
 }
 
+/* ================= key bindings ================= */
+// Defaults mirror the control.* lines in starhermit.txt; the player's
+// StarHermit bindings replace them at boot. Routed by KeyboardEvent.code.
+const DEFAULT_BINDINGS = {
+  left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'],
+  activate: ['Enter'], turnip: ['Digit1'], carrot: ['Digit2'], pumpkin: ['Digit3'],
+  water: ['KeyW'], harvest: ['KeyH'], wait: ['Space'], undo: ['KeyU'], pause: ['KeyP'],
+  hint: ['Slash'], camera: ['KeyC'], back: ['Escape'],
+};
+let codeToAction = new Map();
+let bindings = DEFAULT_BINDINGS;
+const keysFor = (action) => (bindings[action] || []).map(keyLabel).join('/');
+function keyLabel(code) {
+  const named = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Escape: 'Esc', Space: '␣', Slash: '?' };
+  if (named[code]) return named[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  return code || '—';
+}
+function setBindings(b) {
+  bindings = b;
+  codeToAction = new Map();
+  for (const [action, codes] of Object.entries(b)) for (const c of codes) codeToAction.set(c, action);
+  // tool-tray key hints show the effective bindings
+  document.querySelectorAll('kbd[data-key]').forEach((k) => {
+    const codes = b[k.dataset.key] || [];
+    k.textContent = codes.map(keyLabel).join('/');
+    const btn = k.closest('[aria-keyshortcuts]');
+    if (btn) btn.setAttribute('aria-keyshortcuts', codes.map(keyLabel).join(' '));
+  });
+}
+setBindings(DEFAULT_BINDINGS);
+
 /* ================= settings ================= */
-function saveSettings() { store.set('settings', settings); platform.cloudSaveSoon(); applySettings(); }
+function saveSettings() {
+  store.set('settings', settings);
+  platform.cloudSaveSoon();
+  platform.pushSettings(settings); // per-player StarHermit settings KV (changed keys only)
+  applySettings();
+}
 function applySettings() {
   document.body.classList.toggle('high-contrast', settings.highContrast);
   document.body.classList.toggle('reduced-motion', settings.reducedMotion);
@@ -1337,7 +1111,7 @@ function renderHelp() {
     ['Watering', 'Crops grow one stage per tick only while watered. Water (W) after every action. A crop left thirsty for 4 ticks withers.'],
     ['Harvest & Craft', 'Harvest (H) ready crops into your inventory. Combine crops into goods like Garden Salad and Harvest Pie for higher order rewards.'],
     ['Orders', 'Orders are listed on the left. When you have the items, the order is highlighted — press Fulfill to earn coins and score.'],
-    ['Controls', 'Arrows move between plots, Enter acts, Space waits, U undo (practice), P pause, ? hint, C reset camera. Touch: tap a tool then a plot; drag to orbit the camera.'],
+    ['Controls', `${['left', 'right', 'up', 'down'].map(keysFor).join(' ')} move between plots, ${keysFor('activate')} acts, ${keysFor('wait')} waits, ${keysFor('undo')} undo (practice), ${keysFor('pause')} pause, ${keysFor('hint')} hint, ${keysFor('camera')} reset camera, ${keysFor('back')} back. Touch: tap a tool then a plot; drag to orbit the camera.`],
     ['Scoring', 'Score = orders + harvests×5 + crafting×15 + coins + variety×25 + time bonus. Ties break on goal completion, fewer invalid actions, then faster time.'],
   ];
   for (const [t, body] of cards) {
@@ -1375,19 +1149,9 @@ async function renderLeaderboard(board) {
       note.textContent = 'Platform leaderboard unavailable (' + e.message + ') — showing local board.';
       rows = localBoardRows(board);
     }
-  } else if (platform.online) {
-    try {
-      const res = await platform.api('/leaderboard?board=' + encodeURIComponent(board) +
-        (board === 'daily' ? '&date=' + platform.utcDate() : ''));
-      rows = res.rows || [];
-      note.textContent = res.validated ? 'Ranked: scores validated by server replay.' : 'Casual board: plausibility-checked only.';
-    } catch (e) {
-      note.textContent = 'Server error: ' + e.message + ' — showing local board.';
-      rows = localBoardRows(board);
-    }
   } else {
     rows = localBoardRows(board);
-    note.textContent = 'Offline casual board (local only).';
+    note.textContent = 'Local board (this device).';
   }
   list.innerHTML = '';
   if (!rows.length) list.innerHTML = '<li>No scores yet — be the first!</li>';
@@ -1410,18 +1174,16 @@ async function renderFriends() {
     // friends come from the platform account; the free-text add row is local-dev only
     addRow.style.display = 'none';
     let friends = [];
-    try { friends = await platform.api('/me/friends'); } catch { friends = []; }
+    try { friends = await platform.friends(); } catch { friends = []; }
     let entries = [];
     try { entries = await platform.leaderboardEntries(true); } catch { entries = []; }
     const best = {};
     for (const e of entries) best[String(e.userId)] = e.score;
-    if (!friends.length) ul.innerHTML = '<li class="fine">No friends on the platform yet. Invite by sharing today\'s daily seed.</li>';
+    if (!friends.length) ul.innerHTML = '<li class="fine">No friends on the platform yet. Use Invite a friend to send a link.</li>';
     for (const f of friends) {
-      const uid = f.id != null ? f.id : f.userId;
-      const name = f.nickname || (uid != null ? 'Player ' + String(uid).slice(0, 8) : 'Friend');
-      const score = best[String(uid)];
+      const score = best[String(f.userId)];
       const li = document.createElement('li');
-      li.innerHTML = `<span>${escapeHtml(name)}</span><span>${score != null ? score + ' pts' : 'no scores'}</span>`;
+      li.innerHTML = `<span>${f.online ? '🟢 ' : ''}${escapeHtml(f.name)}</span><span>${score != null ? score + ' pts' : 'no scores'}</span>`;
       ul.appendChild(li);
     }
     return;
@@ -1591,7 +1353,28 @@ function boot() {
   window.addEventListener('beforeunload', saveSnapshot);
   window.addEventListener('pagehide', () => { saveSnapshot(); platform.cloudFlush(); });
 
-  platform.init().then(() => {
+  $('btn-signin').textContent = shT.signIn;
+  $('btn-invite').textContent = shT.invite;
+  $('btn-signin').addEventListener('click', () => platform.signIn());
+  $('btn-invite').addEventListener('click', async () => {
+    const link = platform.inviteLink();
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); toastShort(shT.copied); }
+    catch { toastShort(shT.copyFailed); }
+  });
+  platform.init().then(async () => {
+    if (platform.hosted) {
+      // Settings KV wins over the local / cloud-save copy, key by key; then bindings.
+      const [kv, b] = await Promise.all([platform.loadSettings(), platform.loadBindings(DEFAULT_BINDINGS)]);
+      let tuned = false;
+      for (const k of Object.keys(DEFAULT_SETTINGS)) {
+        if (kv[k] !== undefined && kv[k] !== null) { settings[k] = kv[k]; tuned = true; }
+      }
+      if (tuned) { store.set('settings', settings); applySettings(); }
+      platform.primeSettings(settings);
+      setBindings(b);
+    }
+    refreshAccountButtons();
     lp.value = 100;
     $('loading').hidden = true;
     updateIdentityUI();
