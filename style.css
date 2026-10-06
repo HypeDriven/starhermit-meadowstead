@@ -27,13 +27,18 @@ body.high-contrast { --bg: #101010; --panel: #1c1c1c; --ink: #f5f5f5; --chip: #3
 
 #app {
   display: grid;
-  height: 100dvh;
+  height: calc(100dvh / var(--ui-scale, 1));
   grid-template-areas: "status status status" "left play right" "tray tray tray";
   grid-template-columns: minmax(200px, 260px) 1fr minmax(200px, 260px);
   grid-template-rows: auto 1fr auto;
   gap: 8px;
   padding: calc(8px + var(--sat)) calc(8px + var(--sar)) calc(8px + var(--sab)) calc(8px + var(--sal));
 }
+
+/* Large screens: ui-scale.js sets --ui-scale (1 up to 1600×1000). #app (HUD,
+   rails, tray, playfield overlays and every screen) is zoomed once; the canvas
+   inside it raises its pixel ratio by the same factor (js/render.js). */
+#app, body > .sh-toast { zoom: var(--ui-scale, 1); }
 
 #statusbar { grid-area: status; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 #rail-left { grid-area: left; overflow-y: auto; }
@@ -122,7 +127,7 @@ kbd { font-size: 0.75em; opacity: 0.7; }
 }
 body.high-contrast #screens #screen-title.open { background-image: none; background: var(--bg); }
 #results-art {
-  width: min(420px, 80vw); height: auto; border-radius: 12px;
+  width: min(420px, calc(80vw / var(--ui-scale, 1))); height: auto; border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.18);
 }
 @media (max-height: 640px) { #results-art { display: none; } }
@@ -170,7 +175,7 @@ body.high-contrast #screens #screen-title.open { background-image: none; backgro
 #tutorial-bubble {
   position: fixed; z-index: 50; bottom: calc(90px + var(--sab)); left: 50%; transform: translateX(-50%);
   background: var(--panel); border: 3px solid var(--accent); border-radius: 14px;
-  padding: 14px 18px; max-width: min(90vw, 480px); box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+  padding: 14px 18px; max-width: min(calc(90vw / var(--ui-scale, 1)), 480px); box-shadow: 0 6px 24px rgba(0,0,0,0.25);
 }
 
 #loading {
@@ -195,7 +200,7 @@ body.high-contrast #screens #screen-title.open { background-image: none; backgro
   .drawer-toggle { display: inline-block; }
   #app { grid-template-columns: 1fr; grid-template-areas: "status" "play" "tray"; }
   #rail-left, #rail-right {
-    position: fixed; top: 0; bottom: 0; width: min(80vw, 300px); z-index: 30;
+    position: fixed; top: 0; bottom: 0; width: min(calc(80vw / var(--ui-scale, 1)), 300px); z-index: 30;
     background: var(--bg); padding: 12px;
     transition: transform 0.2s ease, visibility 0.2s ease;
     overflow-y: auto; visibility: hidden;
@@ -240,7 +245,7 @@ body.reduced-motion * { transition: none !important; animation: none !important;
 .sh-toast {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(16px + var(--sab)); z-index: 60;
-  max-width: min(92vw, 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
+  max-width: min(calc(92vw / var(--ui-scale, 1)), 420px); margin: 0; padding: 10px 16px; border-radius: 10px;
   background: var(--panel); color: var(--ink); border: 2px solid var(--accent);
   box-shadow: 0 6px 18px rgba(0, 0, 0, .25); text-align: center;
 }

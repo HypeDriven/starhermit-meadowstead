@@ -814,13 +814,18 @@ function renderScene(R, dt) {
   const rescale = adapt(R, dt * 1000);
   const w = R.canvas.clientWidth || R.canvas.parentElement.clientWidth || 800;
   const h = R.canvas.clientHeight || R.canvas.parentElement.clientHeight || 600;
-  const ratio = Math.min(window.devicePixelRatio || 1, R.q.dpr) * R.q.scale * R.adaptiveScale;
+  const ratio = Math.min(window.devicePixelRatio || 1, R.q.dpr) * ((window.UIScale && UIScale.value) || 1) * R.q.scale * R.adaptiveScale;
   if (w !== R.size[0] || h !== R.size[1] || ratio !== R.pixelRatio || rescale) {
     R.size = [w, h];
     R.pixelRatio = ratio;
     R.renderer.setPixelRatio(ratio);
     R.renderer.setSize(w, h, false);
     R.camera.aspect = w / h;
+    // Narrow (portrait) playfields: widen the vertical FOV so the horizontal
+    // view never drops below an 0.85 aspect's, keeping all four plot columns in view.
+    const MIN_ASPECT = 0.85, BASE_FOV = 38;
+    R.camera.fov = R.camera.aspect >= MIN_ASPECT ? BASE_FOV
+      : 2 * Math.atan(Math.tan((BASE_FOV / 2) * Math.PI / 180) * MIN_ASPECT / R.camera.aspect) * 180 / Math.PI;
     R.camera.updateProjectionMatrix();
   }
   const key = R.q.post && R.addons && !R.postFailed ? [R.q.ao, R.q.bloom, R.q.grade, R.q.antialias, w, h, ratio].join('|') : 'none';

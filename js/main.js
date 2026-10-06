@@ -407,6 +407,7 @@ function hideScreens() {
 let screenStack = [];
 function showScreen(id) {
   hideScreens();
+  closeDrawers(); // an open phone drawer would otherwise show through the screen overlay
   const el = $(id);
   el.classList.add('open');
   screenStack.push(id);

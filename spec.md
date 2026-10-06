@@ -36,6 +36,7 @@ same decision.
 | `js/platform.js` | StarHermit adapter over the SDK: identity, cloud save, settings KV, bindings, friends, sign-in/invite, read-only leaderboard; no own-server calls |
 | `js/sh-strings.js` | Account strings in the nine locales |
 | `starhermit-sdk.js` | Shared StarHermit client (unmodified copy) |
+| `ui-scale.js` | Shared large-screen UI scale helper (unmodified copy); sets `--ui-scale` on `<html>` |
 | `server.js` | Local static host; its legacy `/api/v1` routes are not called by the client |
 | `tests/rules.test.js` | 18 `node --test` rules/determinism/content-validation tests (`npm test`) |
 | `tests/gfx.test.mjs` | 6 `node --test` tests for the graphics model and its locale table (`npm test`) |
@@ -278,12 +279,17 @@ boot → (snapshot found?) → away ─┐
 with the status bar above and tool tray below; rails always visible, drawer toggles hidden.
 
 **Compact and portrait (<1024 px).** Both rails become fixed overlay drawers opened by the 📋 and 🎒 chips,
-mutually exclusive, dismissed by tapping outside or `Esc`. The board mirror is *compacted, never hidden* on
+mutually exclusive, dismissed by tapping outside or `Esc`, and closed whenever a screen opens. The board mirror is *compacted, never hidden* on
 phones (216 px, 4 columns) — it is the semantic control layer, and hiding it would leave plots reachable only
 through the canvas.
 
 **Landscape phone (≤500 px tall).** A narrow vertical status rail and scrolling vertical tool tray on the
 left; the playfield takes the rest.
+
+**Large screens (above 1600×1000).** `ui-scale.js` sets `--ui-scale = min(w/1600, h/1000)` (max 2.5) and
+`#app` — status bar, rails, tool tray, playfield overlays and every screen — plus the StarHermit toast are
+CSS-zoomed by it, with vw/vh lengths divided by the scale; the WebGL canvas multiplies its pixel ratio by the
+same factor to stay sharp; the result is the ≤1600×1000 layout magnified.
 
 **Safe areas.** `--sat/--sab/--sal/--sar` from `env(safe-area-inset-*)` pad `#app`, the tool tray, the
 tutorial bubble and every open screen; the meta tag sets `viewport-fit=cover`.
@@ -326,8 +332,8 @@ and chips, 400 body, 0.85em `.fine`.
 
 **Motion.** One dominant key light (`#fff3e0`, intensity 2.4) plus hemisphere fill; crops pop in on a 0.35 s
 scale tween; selection ring and ready markers pulse; particle bursts are pooled and capped at 80 live meshes
-(8 on plant/water, 12 on harvest). The camera is authored, never free: 38° perspective at (0, 12.5, 15),
-orbit clamped to ±4 on x. **Hero of the screen:** in play, the field of plots at frame centre, everything else
+(8 on plant/water, 12 on harvest). The camera is authored, never free: 38° perspective at (0, 12.5, 15)
+(vertical FOV widened on playfields narrower than 0.85:1 so all four plot columns stay in view), orbit clamped to ±4 on x. **Hero of the screen:** in play, the field of plots at frame centre, everything else
 a rail; on the title, the key art homestead; on results, the harvest still-life above the score table.
 
 **Reduced motion.** `settings.reducedMotion` and the `prefers-reduced-motion` query kill all CSS transitions
