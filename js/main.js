@@ -271,13 +271,16 @@ const session = {
     };
     store.del('snapshot');
     // Results are shown before the (possibly slow) ranked submission; the note fills in after.
-    showResults(envelope, this.ranked ? 'Submitting score…' : '');
+    showResults(envelope, this.ranked ? (platform.hosted ? shT.lbPosting : 'Submitting score…') : '');
     if (!this.ranked) return;
     if (platform.hosted) {
-      // Ranked boards are script-owned by the platform; clients never submit scores.
-      // The result is kept as a personal best on the local board, mirrored to cloud save.
+      // Signed in: post the total to the StarHermit high-score board (score-script.js)
+      // and show the rank there; the run also stays a personal best on the local board.
       submitLocal(envelope);
-      setSubmissionNote('Ranked boards are validated platform-side — your score was kept as a personal best and synced to your cloud save.');
+      platform.submitScore(st.score.total).then((r) => {
+        setSubmissionNote(!r.posted ? shT.lbNotPosted
+          : r.rank ? shT.lbRank.replace('{rank}', r.rank) : shT.lbPosted, 'results-lb');
+      });
       return;
     }
     submitLocal(envelope);
@@ -768,11 +771,12 @@ function pauseGame() {
   analytics.log('pause', {});
 }
 
-function setSubmissionNote(note) {
+function setSubmissionNote(note, id) {
   const el = $('results-extra');
   el.innerHTML = '';
   if (!note) return;
   const p = document.createElement('p');
+  if (id) p.id = id;
   p.className = 'fine';
   p.textContent = note;
   el.appendChild(p);
@@ -880,7 +884,7 @@ function openSetup(mode) {
   } else if (mode === 'score') {
     cfg = R.defaultConfig('score', 'scorechase-' + platform.utcDate(), { maxTicks: 120, goalOrders: 10, difficulty: 'hard' });
     details.innerHTML = platform.hosted
-      ? '<p>Fixed seed score chase. Your result is kept as a personal best, synced to your cloud save.</p>'
+      ? '<p>Fixed seed score chase. <b>Ranked</b> on the StarHermit leaderboard.</p>'
       : '<p>Fixed seed score chase. <b>Ranked</b> on the global board.</p>';
   }
   session._pendingConfig = cfg;

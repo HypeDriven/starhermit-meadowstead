@@ -2,8 +2,10 @@
    (window.StarHermit from starhermit-sdk.js). The SDK owns the launch token,
    renewal, profile lookup, the game:<slug> cloud-save slot, the settings KV,
    key bindings, friends and invite links; this adapter keeps the game's API.
-   Hosted mode = signed in. Without a token nothing here makes any network
-   request: local clock, local boards, local achievements, no telemetry. */
+   Hosted mode = signed in: a finished ranked run is also posted to the
+   StarHermit high-score board (StarHermit.submitScores, score-script.js).
+   Without a token nothing here makes any network request: local clock,
+   local boards, local achievements, no telemetry. */
 
 const SETTINGS_DEBOUNCE_MS = 1500;
 const SYNC_TEXT = { synced: '☁ synced', saving: '☁ saving…', offline: '☁ offline' };
@@ -124,6 +126,20 @@ export function createPlatform(deps) {
     },
 
     /* ---- platform leaderboard (read-only; ranked boards are server-owned) ---- */
+    /* Post a finished ranked run to the leaderboards (score-script.js); resolves
+       { posted, rank } — rank on the high-score board, or null. Signed in only. */
+    async submitScore(total) {
+      if (!this.hosted) return { posted: false, rank: null };
+      try {
+        const keys = await sh.submitScores({ 'high-score': total });
+        if (!(keys || []).includes('high-score')) return { posted: false, rank: null };
+        try {
+          const r = await sh.leaderboard('high-score', { pageSize: 100 });
+          const me = (r.items || []).find((e) => String(e.userId) === String(this.userId));
+          return { posted: true, rank: me ? me.rank : null };
+        } catch { return { posted: true, rank: null }; }
+      } catch { return { posted: false, rank: null }; }
+    },
     async leaderboardEntries(friendsOnly) {
       if (!this.hosted) return [];
       const lb = await sh.leaderboard(null, { pageSize: friendsOnly ? 100 : 20 });

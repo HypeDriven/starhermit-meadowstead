@@ -33,10 +33,11 @@ same decision.
 | `vendor/three/addons/` | three.js r185 addons matching the vendored core exactly: EffectComposer, Render/Shader/Output/GTAO/UnrealBloom/SMAA/FXAA passes, their shaders, RoomEnvironment (importmap `three/addons/`) |
 | `js/audio.js` | `window.MeadowAudio` — WebAudio buses, sampled one-shots with synth fallbacks, procedural ambience and music, caption dispatch |
 | `js/main.js` | Bootstrap, session lifecycle, UI refresh, input (pointer/keyboard/gamepad), tutorial, screens, persistence |
-| `js/platform.js` | StarHermit adapter over the SDK: identity, cloud save, settings KV, bindings, friends, sign-in/invite, read-only leaderboard; no own-server calls |
+| `js/platform.js` | StarHermit adapter over the SDK: identity, cloud save, settings KV, bindings, friends, sign-in/invite, read-only leaderboard, high-score posting; no own-server calls |
 | `js/sh-strings.js` | Account strings in the nine locales |
 | `starhermit-sdk.js` | Shared StarHermit client (unmodified copy) |
 | `ui-scale.js` | Shared large-screen UI scale helper (unmodified copy); sets `--ui-scale` on `<html>` |
+| `score-script.js` | StarHermit platform script (`server=`): range-checks a finished ranked run's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`) |
 | `server.js` | Local static host; its legacy `/api/v1` routes are not called by the client |
 | `tests/rules.test.js` | 18 `node --test` rules/determinism/content-validation tests (`npm test`) |
 | `tests/gfx.test.mjs` | 6 `node --test` tests for the graphics model and its locale table (`npm test`) |
@@ -463,7 +464,7 @@ table. This is the one required feature that is designed but not implemented —
 
 ## 12. StarHermit integration
 
-`starhermit.txt` declares `name=Meadowstead`, `launch=index.html`, `server=server.js`, `cover=coverart.png`;
+`starhermit.txt` declares `name=Meadowstead`, `launch=index.html`, `server=score-script.js`, `cover=coverart.png`;
 conventions follow https://wiki.starhermit.com/.
 
 All platform calls go through the shared client `starhermit-sdk.js` (loaded before the game scripts) via
@@ -492,12 +493,15 @@ water, harvest, wait, undo, pause, hint, camera, back).
   best score on the platform board.
 - **Invite link** — signed-in players get **Invite a friend** on the title, copying
   `StarHermit.inviteLink()` with a confirmation toast.
-- **Leaderboards** are read-only: the game's first platform board (global, or filtered to friends) when
-  one exists; ranked results are kept as personal bests (local board + cloud save) — clients never submit
-  scores. **Achievements** stay local (part of the cloud-saved progress doc); `server.js` is a standalone
-  Node host, not a platform game script, so there is no server-owned unlock path.
+- **Leaderboard** — every finished ranked run (Daily, Score chase) posts its total through
+  `StarHermit.submitScores` (a practice session whose `score-script.js` posts it to the `high-score` board:
+  integer, higher is better, 0–100,000); the results screen shows "Posting score to the leaderboard…", then
+  "Leaderboard rank: #N" (or posted / not posted). The run also stays a personal best on the local board.
+  The leaderboard screen reads the game's first platform board (`high-score`; global, or filtered to
+  friends). **Achievements** stay local (part of the cloud-saved progress doc); `server.js` is a local Node
+  host, so there is no server-owned unlock path.
 
-Account strings (sign-in, invite, toasts) are localized in the nine locales (`js/sh-strings.js`).
+Account and leaderboard strings (sign-in, invite, toasts, rank line) are localized in the nine locales (`js/sh-strings.js`).
 
 **Standalone (no token):** the client makes no network request beyond its own static files — no time
 probe, daily, scores, leaderboard, achievements or telemetry. The UTC day comes from the device clock;
