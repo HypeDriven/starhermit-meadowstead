@@ -831,9 +831,9 @@ function renderScene(R, dt) {
   const key = R.q.post && R.addons && !R.postFailed ? [R.q.ao, R.q.bloom, R.q.grade, R.q.antialias, w, h, ratio].join('|') : 'none';
   if (key !== R.postKey) { R.postKey = key; buildPost(R, w, h); }
   if (R.composer) {
-    try { R.composer.render(dt); return; } catch (e) { R.postFailed = true; R.composer = null; R.postKey = null; }
+    try { (globalThis.GameOptions ? globalThis.GameOptions.draw(R.composer.renderer, () => R.composer.render(dt)) : R.composer.render(dt)); return; } catch (e) { R.postFailed = true; R.composer = null; R.postKey = null; }
   }
-  R.renderer.render(R.scene, R.camera);
+  (globalThis.GameOptions ? globalThis.GameOptions.draw(R.renderer, () => R.renderer.render(R.scene, R.camera)) : R.renderer.render(R.scene, R.camera));
 }
 
 let lastT = 0;
