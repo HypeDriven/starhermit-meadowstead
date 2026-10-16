@@ -5,18 +5,52 @@
    Hosted mode = signed in: a finished ranked run is also posted to the
    StarHermit high-score board (StarHermit.submitScores, score-script.js).
    Without a token nothing here makes any network request: local clock,
-   local boards, local achievements, no telemetry. */
+   local boards, local achievements, no telemetry.
+   Cloud saves are conditional (the SDK sends the version it last read): when
+   another device saved first the SDK emits 'saveconflict'; the adapter reloads
+   the cloud document, hands it to applyDoc to merge, and saves the merge. */
 
 const SETTINGS_DEBOUNCE_MS = 1500;
-const SYNC_TEXT = { synced: '☁ synced', saving: '☁ saving…', offline: '☁ offline' };
+const N = (key) => key; // marks a key for the game's T()
+const SYNC_TEXT = { synced: N('☁ synced'), saving: N('☁ saving…'), offline: N('☁ offline') };
 
+/* Merge another device's progress with this one: the further journey stage and
+   larger counters win, achievements / dailies / friends are united, and the
+   local board keeps the best 50 runs from both. Nothing either side earned is lost. */
+export function mergeProgress(local, remote) {
+  const a = local || {}, b = remote || {};
+  const num = (x) => (Number.isFinite(x) ? x : 0);
+  const out = Object.assign({}, b, a);
+  out.journeyStage = Math.max(num(a.journeyStage) || 1, num(b.journeyStage) || 1);
+  out.masteryXp = Math.max(num(a.masteryXp), num(b.masteryXp));
+  out.lifetimeCoins = Math.max(num(a.lifetimeCoins), num(b.lifetimeCoins));
+  out.craftTotal = Math.max(num(a.craftTotal), num(b.craftTotal));
+  out.tutorialDone = !!(a.tutorialDone || b.tutorialDone);
+  out.achievements = Object.assign({}, b.achievements || {}, a.achievements || {});
+  for (const [k, t] of Object.entries(b.achievements || {})) if (out.achievements[k] > t) out.achievements[k] = t; // earliest unlock
+  out.completedDailies = Object.assign({}, b.completedDailies || {});
+  for (const [d, sc] of Object.entries(a.completedDailies || {})) out.completedDailies[d] = Math.max(num(sc), num(out.completedDailies[d]));
+  // The streak belongs to whichever side played the latest daily.
+  const newer = String(b.lastDailyDate || '') > String(a.lastDailyDate || '') ? b : a;
+  out.lastDailyDate = newer.lastDailyDate || null;
+  out.dailyStreak = a.lastDailyDate === b.lastDailyDate ? Math.max(num(a.dailyStreak), num(b.dailyStreak)) : num(newer.dailyStreak);
+  out.friends = [...new Set([...(b.friends || []), ...(a.friends || [])])];
+  const seen = new Set();
+  out.localBoard = [...(a.localBoard || []), ...(b.localBoard || [])].filter((row) => {
+    const id = [row.name, row.score, row.mode, row.seed, row.when].join('|');
+    if (seen.has(id)) return false;
+    seen.add(id); return true;
+  }).sort((x, y) => y.score - x.score).slice(0, 50);
+  return out;
+}
 /**
- * deps: { sh, store, buildDoc(), applyDoc(doc), onIdentity(), onAuth(a), syncEl() }
+ * deps: { sh, store, buildDoc(), applyDoc(doc, { newer }), onIdentity(), onAuth(a), onMerged(), syncEl(), T(key, vars) }
  * store is the game's {get,set} localStorage wrapper.
  */
 export function createPlatform(deps) {
   const sh = deps.sh || globalThis.StarHermit;
   const store = deps.store;
+  const T = deps.T || ((key, vars) => String(key).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? vars[k] : m)));
   let lastSettings = null;
   let pendingPatch = null;
   let settingsTimer = null;
@@ -31,6 +65,7 @@ export function createPlatform(deps) {
     async init() {
       sh.init();
       sh.on('saved', (ok) => this.setSync(ok ? 'synced' : 'offline'));
+      sh.on('saveconflict', () => this.resolveConflict());
       sh.on('auth', (a) => {
         if (!a.signedIn) { this._name = null; this.setSync('offline'); }
         if (deps.onAuth) deps.onAuth(a);
@@ -52,8 +87,8 @@ export function createPlatform(deps) {
     },
     displayName() {
       if (this._name) return this._name;
-      if (this.userId) return 'Player ' + String(this.userId).slice(0, 6);
-      return 'You';
+      if (this.userId) return T('Player {id}', { id: String(this.userId).slice(0, 6) });
+      return T('You');
     },
 
     /* ---- cloud save: the game:<slug> slot; localStorage stays the offline cache ---- */
@@ -61,14 +96,21 @@ export function createPlatform(deps) {
       if (!this.hosted) return;
       const doc = await sh.loadJSON();
       if (doc && typeof doc === 'object') {
-        // on conflict prefer the remote copy
+        // Progress from both sides is merged (applyDoc); settings only from a newer save.
         const meta = store.get('cloud-meta', null);
-        if (!meta || !doc.savedAt || doc.savedAt > meta.savedAt) {
-          deps.applyDoc(doc);
-          store.set('cloud-meta', { savedAt: doc.savedAt || Date.now() });
-        }
+        const newer = !meta || !doc.savedAt || doc.savedAt > meta.savedAt;
+        deps.applyDoc(doc, { newer });
+        if (newer) store.set('cloud-meta', { savedAt: doc.savedAt || Date.now() });
       }
       this.setSync('synced');
+    },
+    /* Another device saved since our last load: reload, merge, save the merge. */
+    async resolveConflict() {
+      if (!this.hosted) return;
+      const doc = await sh.loadJSON();
+      if (doc && typeof doc === 'object') deps.applyDoc(doc, { newer: false });
+      if (deps.onMerged) deps.onMerged();
+      if (!sh.saveConflicted()) this.cloudSaveSoon();
     },
     cloudSaveSoon() {
       if (!this.hosted) return;
@@ -163,17 +205,18 @@ export function createPlatform(deps) {
       return rows;
     },
     async nicknameFor(userId) {
-      if (userId == null) return 'Player';
+      if (userId == null) return T('Player');
       const p = await sh.profile(userId);
-      return p ? p.displayName : 'Player ' + String(userId).slice(0, 6);
+      return p ? p.displayName : T('Player {id}', { id: String(userId).slice(0, 6) });
     },
 
+    syncText() { return SYNC_TEXT[this.sync] ? T(SYNC_TEXT[this.sync]) : ('☁ ' + this.sync); },
     setSync(state) {
       this.sync = state;
       const el = deps.syncEl && deps.syncEl();
       if (!el) return;
       el.hidden = !this.hosted;
-      el.textContent = SYNC_TEXT[state] || ('☁ ' + state);
+      el.textContent = this.syncText();
     },
   };
   return platform;

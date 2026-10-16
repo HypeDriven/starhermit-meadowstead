@@ -250,3 +250,6 @@ body.reduced-motion * { transition: none !important; animation: none !important;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .25); text-align: center;
 }
 .sh-toast[hidden] { display: none; }
+/* Settings: the game's own rows and Graphics box are redrawn in place; the shared
+   Language / Sound / Report sections (game-options.js) follow inside #gfx-section. */
+.settings-own, .gfx-own { display: grid; gap: 10px; min-width: 0; }

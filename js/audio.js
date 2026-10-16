@@ -164,15 +164,18 @@ const SYNTH = {
 
 const SFX = {};
 {
+  // Caption keys; js/i18n.js (MSI18N.T) translates them when shown.
+  const N = (key) => key;
   const caps = {
-    click: 'click', plant: 'planting', water: 'watering', harvest: 'harvest',
-    craft: 'crafting', fulfill: 'order fulfilled', grown: 'a crop is ready',
-    wither: 'a crop withered', invalid: 'action not allowed', terminal: 'session complete',
-    season: 'the season turns', undo: 'action undone', achievement: 'achievement unlocked',
+    click: N('click'), plant: N('planting'), water: N('watering'), harvest: N('harvest'),
+    craft: N('crafting'), fulfill: N('order fulfilled'), grown: N('a crop is ready'),
+    wither: N('a crop withered'), invalid: N('action not allowed'), terminal: N('session complete'),
+    season: N('the season turns'), undo: N('action undone'), achievement: N('achievement unlocked'),
   };
+  const tr = (key) => (window.MSI18N ? window.MSI18N.T(key) : key);
   for (const evt of Object.keys(SYNTH)) {
     SFX[evt] = () => {
-      if (caps[evt]) caption(caps[evt]);
+      if (caps[evt]) caption(tr(caps[evt]));
       if (!trySample(evt)) SYNTH[evt]();
     };
   }

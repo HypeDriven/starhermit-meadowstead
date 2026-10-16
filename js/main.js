@@ -1,8 +1,8 @@
 /* Meadowstead — bootstrap, session, UI, input, persistence, platform adapter. */
 import * as THREE from 'three';
 import * as GFX from './gfx.js';
-import { gfxText, pickLocale } from './gfx-strings.js';
-import { createPlatform } from './platform.js';
+import { gfxText } from './gfx-strings.js';
+import { createPlatform, mergeProgress } from './platform.js';
 import { shStrings } from './sh-strings.js';
 
 const R = window.MeadowRules;
@@ -10,6 +10,10 @@ const Audio = window.MeadowAudio;
 const Render = window.MeadowRender;
 
 const $ = (id) => document.getElementById(id);
+// Localization (js/i18n.js): T() translates an English key; N() only marks a key for later T().
+const T = (key, vars) => (window.MSI18N ? window.MSI18N.T(key, vars) : String(key).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? vars[k] : m)));
+const N = (key) => key;
+const lang = () => (window.MSI18N ? window.MSI18N.lang : 'en-US');
 const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
 
 /* ================= persistence ================= */
@@ -50,20 +54,24 @@ let progress = store.get('progress', {
 });
 
 /* ================= platform adapter (js/platform.js over starhermit-sdk.js) ================= */
-function applyCloudDoc(doc) {
+/* Apply the cloud-save document: progress is always merged with this device's;
+   settings are taken only from a newer save; an in-progress session on this
+   device is kept (the remote one is used only when there is none here). */
+function applyCloudDoc(doc, opts) {
   if (!doc || typeof doc !== 'object') return;
+  const newer = !!(opts && opts.newer);
   if (doc.progress && typeof doc.progress === 'object') {
-    progress = Object.assign({}, progress, doc.progress);
+    progress = mergeProgress(progress, doc.progress);
     store.set('progress', progress);
   }
-  if (doc.settings && typeof doc.settings === 'object') {
+  if (newer && doc.settings && typeof doc.settings === 'object') {
     settings = Object.assign({}, DEFAULT_SETTINGS, doc.settings);
     settings.volumes = Object.assign({}, DEFAULT_SETTINGS.volumes, settings.volumes || {});
     if (!settings.gfx || typeof settings.gfx !== 'object') settings.gfx = {};
     store.set('settings', settings);
     applySettings();
   }
-  if (doc.snapshot) store.set('snapshot', doc.snapshot);
+  if (doc.snapshot && !store.get('snapshot', null) && !session.state) store.set('snapshot', doc.snapshot);
 }
 const platform = createPlatform({
   store,
@@ -73,11 +81,14 @@ const platform = createPlatform({
   onAuth: (a) => {
     updateIdentityUI();
     refreshAccountButtons();
-    if (!a.signedIn) toastShort(shT.signedOut); // keep playing locally
+    if (!a.signedIn) toastShort(shT().signedOut); // keep playing locally
   },
+  onMerged: () => { refreshTitle(); if (document.querySelector('#screen-profile.open')) renderProfile(); },
   syncEl: () => $('sb-sync'),
+  T,
 });
-const shT = shStrings(navigator.languages || [navigator.language]);
+// StarHermit account strings (js/sh-strings.js) in the game's current language.
+const shT = () => shStrings([lang()]);
 
 // Sign-in (platform host, no token) / invite (signed in); hidden locally.
 function refreshAccountButtons() {
@@ -115,21 +126,24 @@ const analytics = {
 
 /* ================= achievements ================= */
 const ACHIEVEMENTS = [
-  { key: 'first_harvest', name: 'First Harvest', desc: 'Harvest your first crop.' },
-  { key: 'first_order', name: 'Order Up', desc: 'Fulfill your first order.' },
-  { key: 'crafter', name: 'Homestead Kitchen', desc: 'Craft 10 goods in total.' },
-  { key: 'journey_10', name: 'Seasoned Hand', desc: 'Complete journey stage 10.' },
-  { key: 'daily_streak_3', name: 'Three Dawns', desc: 'Complete the daily challenge 3 days in a row.' },
-  { key: 'homestead_restored', name: 'Homestead Restored', desc: 'Earn 5000 lifetime coins.' },
+  { key: 'first_harvest', name: N('First Harvest'), desc: N('Harvest your first crop.') },
+  { key: 'first_order', name: N('Order Up'), desc: N('Fulfill your first order.') },
+  { key: 'crafter', name: N('Homestead Kitchen'), desc: N('Craft 10 goods in total.') },
+  { key: 'journey_10', name: N('Seasoned Hand'), desc: N('Complete journey stage 10.') },
+  { key: 'daily_streak_3', name: N('Three Dawns'), desc: N('Complete the daily challenge 3 days in a row.') },
+  { key: 'homestead_restored', name: N('Homestead Restored'), desc: N('Earn 5000 lifetime coins.') },
 ];
+const achievementName = (key) => T((ACHIEVEMENTS.find(a => a.key === key) || { name: key }).name);
+let lastAchievement = null; // shown on the results screen; re-rendered on a language change
 function unlockAchievement(key) {
   if (progress.achievements[key]) return false; // idempotent
   progress.achievements[key] = Date.now();
   saveProgress();
   Audio.sfx.achievement();
-  announce('Achievement unlocked: ' + (ACHIEVEMENTS.find(a => a.key === key) || {}).name);
+  announce(T('Achievement unlocked: {name}', { name: achievementName(key) }));
+  lastAchievement = key;
   const el = $('achievements-earned');
-  if (el) el.textContent = '🏅 ' + (ACHIEVEMENTS.find(a => a.key === key) || {}).name;
+  if (el) el.textContent = '🏅 ' + achievementName(key);
   // achievements stay local (part of the cloud-saved progress doc when signed in)
   return true;
 }
@@ -161,7 +175,9 @@ const session = {
     hideScreens();
     screenStack = [];
     setStatus('playing');
-    announce('Session started. ' + objectiveText());
+    lastAchievement = null;
+    $('achievements-earned').textContent = '';
+    announce(T('Session started. {objective}', { objective: objectiveText() }));
     analytics.log('start', { mode: config.mode, seed: config.seed });
     if (config.mode === 'learn') startTutorial();
     refreshAll();
@@ -202,7 +218,7 @@ const session = {
     this.state = R.deserialize(snap);
     this.log.pop();
     Audio.sfx.undo();
-    announce('Undone. Back to time ' + this.state.tick + '.');
+    announce(T('Undone. Back to time {tick}.', { tick: this.state.tick }));
     refreshAll();
     saveSnapshot(); // otherwise a reload restores the move that was just undone
   },
@@ -271,20 +287,20 @@ const session = {
     };
     store.del('snapshot');
     // Results are shown before the (possibly slow) ranked submission; the note fills in after.
-    showResults(envelope, this.ranked ? (platform.hosted ? shT.lbPosting : 'Submitting score…') : '');
+    showResults(envelope, this.ranked ? (platform.hosted ? () => shT().lbPosting : () => T('Submitting score…')) : '');
     if (!this.ranked) return;
     if (platform.hosted) {
       // Signed in: post the total to the StarHermit high-score board (score-script.js)
       // and show the rank there; the run also stays a personal best on the local board.
       submitLocal(envelope);
       platform.submitScore(st.score.total).then((r) => {
-        setSubmissionNote(!r.posted ? shT.lbNotPosted
-          : r.rank ? shT.lbRank.replace('{rank}', r.rank) : shT.lbPosted, 'results-lb');
+        setSubmissionNote(() => (!r.posted ? shT().lbNotPosted
+          : r.rank ? shT().lbRank.replace('{rank}', r.rank) : shT().lbPosted), 'results-lb');
       });
       return;
     }
     submitLocal(envelope);
-    setSubmissionNote('Score recorded on the local board.');
+    setSubmissionNote(() => T('Score recorded on the local board.'));
   },
 
   snapshotSave() {
@@ -331,23 +347,24 @@ function saveSnapshot() { session.snapshotSave(); }
 
 /* ================= tutorial (Learn mode) ================= */
 const TUTORIAL_STEPS = [
-  { text: 'Welcome! Select the Turnip tool (key 1), then choose an empty plot to plant.', match: c => c.type === 'plant' },
-  { text: 'Good. Now water your crop with the Water tool (key W) on the planted plot.', match: c => c.type === 'water' },
-  { text: 'Crops grow one step each time you act, but only when watered. Keep watering until it is ready.', match: c => c.type === 'harvest' },
-  { text: 'Harvested! Check the orders on the left — grow what they ask for, then fulfill an order.', match: c => c.type === 'fulfill' },
-  { text: 'Orders pay coins and score. Crafting combines crops into valuable goods. Fulfill 2 orders to finish this lesson.', match: null },
+  { text: N('Welcome! Select the Turnip tool (key 1), then choose an empty plot to plant.'), match: c => c.type === 'plant' },
+  { text: N('Good. Now water your crop with the Water tool (key W) on the planted plot.'), match: c => c.type === 'water' },
+  { text: N('Crops grow one step each time you act, but only when watered. Keep watering until it is ready.'), match: c => c.type === 'harvest' },
+  { text: N('Harvested! Check the orders on the left — grow what they ask for, then fulfill an order.'), match: c => c.type === 'fulfill' },
+  { text: N('Orders pay coins and score. Crafting combines crops into valuable goods. Fulfill 2 orders to finish this lesson.'), match: null },
 ];
 function startTutorial() {
   session.tutorialStep = 0;
   showTutorialStep();
 }
-function showTutorialStep() {
+function showTutorialStep(quiet) {
   const step = TUTORIAL_STEPS[session.tutorialStep];
   const bubble = $('tutorial-bubble');
   if (!step) { bubble.hidden = true; session.tutorialStep = -1; return; }
-  $('tutorial-text').textContent = 'Step ' + (session.tutorialStep + 1) + '/' + TUTORIAL_STEPS.length + ': ' + step.text;
+  $('tutorial-text').textContent = T('Step {n}/{total}: {text}', { n: session.tutorialStep + 1, total: TUTORIAL_STEPS.length, text: T(step.text) });
   bubble.hidden = false;
-  announce(step.text);
+  if (quiet) return;
+  announce(T(step.text));
   analytics.log('tutorial_step', { step: session.tutorialStep });
 }
 function tutorialOnCommand(cmd) {
@@ -372,34 +389,34 @@ let selectedPlot = -1;
 function announce(msg) { $('live-objective').textContent = msg; }
 function announceScore(msg) { $('live-score').textContent = msg; }
 function showError(cmd, reason) {
-  const text = ERROR_TEXT[reason] || ('Cannot do that: ' + reason);
+  const text = ERROR_TEXT[reason] ? T(ERROR_TEXT[reason]) : T('Cannot do that: {reason}', { reason });
   $('live-errors').textContent = text;
   $('hint-banner').textContent = '⚠ ' + text;
   clearTimeout(showError._t);
   showError._t = setTimeout(() => { $('hint-banner').textContent = ''; }, 3000);
 }
 const ERROR_TEXT = {
-  'wrong-season': 'That crop does not grow in this season.',
-  'plot-occupied': 'That plot already has a crop.',
-  'no-crop': 'There is no crop on that plot.',
-  'already-watered': 'That crop is already watered.',
-  'already-grown': 'That crop is ready — harvest it instead.',
-  'not-ready': 'That crop is not ready yet. Keep watering it.',
-  'missing-ingredients': 'You do not have the ingredients for that recipe.',
-  'missing-items': 'You do not have the items that order needs.',
-  'no-such-order': 'That order is no longer available.',
-  'crop-not-unlocked': 'That crop is not available in this session.',
-  'recipe-not-unlocked': 'That recipe is not available in this session.',
-  'session-over': 'This session has ended.',
-  'duplicate-command': 'That action was already applied.',
-  'undo-not-allowed': 'Undo is only available in Practice mode.',
-  'nothing-to-undo': 'Nothing to undo.',
+  'wrong-season': N('That crop does not grow in this season.'),
+  'plot-occupied': N('That plot already has a crop.'),
+  'no-crop': N('There is no crop on that plot.'),
+  'already-watered': N('That crop is already watered.'),
+  'already-grown': N('That crop is ready — harvest it instead.'),
+  'not-ready': N('That crop is not ready yet. Keep watering it.'),
+  'missing-ingredients': N('You do not have the ingredients for that recipe.'),
+  'missing-items': N('You do not have the items that order needs.'),
+  'no-such-order': N('That order is no longer available.'),
+  'crop-not-unlocked': N('That crop is not available in this session.'),
+  'recipe-not-unlocked': N('That recipe is not available in this session.'),
+  'session-over': N('This session has ended.'),
+  'duplicate-command': N('That action was already applied.'),
+  'undo-not-allowed': N('Undo is only available in Practice mode.'),
+  'nothing-to-undo': N('Nothing to undo.'),
 };
 
 function objectiveText() {
   const st = session.state;
   if (!st) return '';
-  return `Fulfill ${st.goalOrders} orders before time runs out (${st.ordersFulfilled}/${st.goalOrders}).`;
+  return T('Fulfill {goal} orders before time runs out ({done}/{goal}).', { goal: st.goalOrders, done: st.ordersFulfilled });
 }
 
 function setStatus(s) { $('app').dataset.screen = s; }
@@ -439,12 +456,12 @@ function refreshAll() {
   // Season turns are a rules consequence of the tick, not a rules event: cue them here.
   if (lastSeason && lastSeason !== season) Audio.sfx.season();
   lastSeason = season;
-  $('sb-season').textContent = season[0].toUpperCase() + season.slice(1);
-  $('sb-tick').textContent = `Time ${st.tick}/${st.maxTicks}`;
+  $('sb-season').textContent = T(SEASON_NAMES[season] || season);
+  $('sb-tick').textContent = T('Time {tick}/{max}', { tick: st.tick, max: st.maxTicks });
   $('sb-coins').textContent = '🪙 ' + st.coins;
   const scoreSoFar = R.computeScore(Object.assign({}, st, { terminalReason: st.terminalReason || 'x' }));
-  $('sb-score').textContent = 'Score ' + (st.score ? st.score.total : scoreSoFar.total - scoreSoFar.timeBonus);
-  $('sb-mode').textContent = st.mode[0].toUpperCase() + st.mode.slice(1);
+  $('sb-score').textContent = T('Score {n}', { n: st.score ? st.score.total : scoreSoFar.total - scoreSoFar.timeBonus });
+  $('sb-mode').textContent = T(MODE_NAMES[st.mode] || st.mode);
   $('objective-text').textContent = objectiveText();
   $('objective-progress').value = Math.round(100 * st.ordersFulfilled / st.goalOrders);
 
@@ -461,9 +478,9 @@ function refreshAll() {
     li.appendChild(label);
     const btn = document.createElement('button');
     btn.className = 'btn';
-    btn.textContent = 'Fulfill';
+    btn.textContent = T('Fulfill');
     btn.disabled = !can;
-    btn.setAttribute('aria-label', `Fulfill order for ${needs}, reward ${o.reward} coins`);
+    btn.setAttribute('aria-label', T('Fulfill order for {needs}, reward {reward} coins', { needs, reward: o.reward }));
     btn.addEventListener('click', () => session.command({ type: 'fulfill', orderId: o.id }));
     li.appendChild(btn);
     ol.appendChild(li);
@@ -473,7 +490,7 @@ function refreshAll() {
   const il = $('inventory-list');
   il.innerHTML = '';
   const entries = Object.entries(st.inventory).filter(([, n]) => n > 0);
-  if (!entries.length) il.innerHTML = '<li>Empty — plant something!</li>';
+  if (!entries.length) { const li = document.createElement('li'); li.textContent = T('Empty — plant something!'); il.appendChild(li); }
   for (const [k, n] of entries) {
     const li = document.createElement('li');
     li.textContent = `${itemName(k)} × ${n}`;
@@ -489,13 +506,13 @@ function refreshAll() {
     const needs = Object.entries(r.needs).map(([k, n]) => `${n} ${itemName(k)}`).join(' + ');
     const btn = document.createElement('button');
     btn.className = 'btn wide';
-    btn.textContent = `${r.name} (${needs})`;
+    btn.textContent = `${itemName(key)} (${needs})`;
     btn.disabled = !can;
-    btn.setAttribute('aria-label', `Craft ${r.name} from ${needs}`);
+    btn.setAttribute('aria-label', T('Craft {name} from {needs}', { name: itemName(key), needs }));
     btn.addEventListener('click', () => session.command({ type: 'craft', recipe: key }));
     cl.appendChild(btn);
   }
-  if (!st.allowedRecipes.length) cl.innerHTML = '<p class="fine">No recipes unlocked in this session.</p>';
+  if (!st.allowedRecipes.length) { const p = document.createElement('p'); p.className = 'fine'; p.textContent = T('No recipes unlocked in this session.'); cl.appendChild(p); }
 
   // tool availability
   document.querySelectorAll('.tool[data-crop]').forEach(b => {
@@ -507,7 +524,11 @@ function refreshAll() {
   if (renderer) Render.sync(renderer, st, season, {});
 }
 
+const ITEM_NAMES = { turnip: N('Turnip'), carrot: N('Carrot'), pumpkin: N('Pumpkin'), salad: N('Garden Salad'), pie: N('Harvest Pie') };
+const SEASON_NAMES = { spring: N('Spring'), summer: N('Summer'), autumn: N('Autumn') };
+const MODE_NAMES = { learn: N('Learn'), journey: N('Journey'), daily: N('Daily'), practice: N('Practice'), challenge: N('Challenge'), score: N('Score Chase') };
 function itemName(k) {
+  if (ITEM_NAMES[k]) return T(ITEM_NAMES[k]);
   return (R.CROPS[k] && R.CROPS[k].name) || (R.RECIPES[k] && R.RECIPES[k].name) || k;
 }
 
@@ -523,16 +544,16 @@ function updateBoardMirror() {
   st.plots.forEach((p, i) => {
     const b = document.createElement('button');
     const c = p.crop;
-    let label = 'Empty plot ' + (i + 1);
+    let label = T('Empty plot {n}', { n: i + 1 });
     let icon = '▫';
     if (c) {
       const name = itemName(c.type);
-      const stTxt = c.ready ? 'ready to harvest' : (c.watered ? 'watered, growing' : `needs water (${c.age}/${R.CROPS[c.type].grow})`);
-      label = `Plot ${i + 1}: ${name}, ${stTxt}`;
+      const stTxt = c.ready ? T('ready to harvest') : (c.watered ? T('watered, growing') : T('needs water ({age}/{grow})', { age: c.age, grow: R.CROPS[c.type].grow }));
+      label = T('Plot {n}: {name}, {state}', { n: i + 1, name, state: stTxt });
       icon = c.ready ? '🌟' : (c.watered ? '💧' : '🌱');
     }
     b.innerHTML = icon + '<span class="sub">' + (i + 1) + '</span>';
-    b.setAttribute('aria-label', label + (i === selectedPlot ? ', selected' : ''));
+    b.setAttribute('aria-label', i === selectedPlot ? T('{label}, selected', { label }) : label);
     if (i === selectedPlot) b.classList.add('selected');
     b.addEventListener('click', () => { selectPlot(i); activatePlot(i); });
     bm.appendChild(b);
@@ -566,7 +587,9 @@ function selectPlot(i) {
   updateBoardMirror();
   if (i >= 0 && session.state) {
     const c = session.state.plots[i].crop;
-    announce('Plot ' + (i + 1) + ': ' + (c ? itemName(c.type) + (c.ready ? ', ready' : c.watered ? ', watered' : ', needs water') : 'empty'));
+    const what = !c ? T('empty') : c.ready ? T('{name}, ready', { name: itemName(c.type) })
+      : c.watered ? T('{name}, watered', { name: itemName(c.type) }) : T('{name}, needs water', { name: itemName(c.type) });
+    announce(T('Plot {n}: {state}', { n: i + 1, state: what }));
   }
 }
 
@@ -585,7 +608,7 @@ function setTool(btn) {
     btn.classList.add('active');
     currentTool = { type: btn.dataset.tool };
     if (btn.dataset.crop) currentTool.crop = btn.dataset.crop;
-    announce('Tool selected: ' + btn.textContent.trim());
+    announce(T('Tool selected: {tool}', { tool: btn.textContent.trim() }));
   } else currentTool = null;
 }
 
@@ -752,14 +775,14 @@ function showHint() {
   const h = legal.find(a => a.type === 'harvest');
   const p = legal.find(a => a.type === 'plant');
   const c = legal.find(a => a.type === 'craft');
-  if (f) hint = 'You can fulfill an order right now — press its Fulfill button.';
-  else if (h) hint = `Plot ${h.plot + 1} is ready to harvest (tool H).`;
-  else if (w) hint = `Plot ${w.plot + 1} needs water (tool W).`;
-  else if (c) hint = `You can craft ${itemName(c.recipe)}.`;
-  else if (p) hint = `Plant a ${itemName(p.crop)} on plot ${p.plot + 1} (in season now).`;
-  else hint = 'Wait (Space) to let time pass.';
+  if (f) hint = T('You can fulfill an order right now — press its Fulfill button.');
+  else if (h) hint = T('Plot {n} is ready to harvest (tool H).', { n: h.plot + 1 });
+  else if (w) hint = T('Plot {n} needs water (tool W).', { n: w.plot + 1 });
+  else if (c) hint = T('You can craft {item}.', { item: itemName(c.recipe) });
+  else if (p) hint = T('Plant a {item} on plot {n} (in season now).', { item: itemName(p.crop), n: p.plot + 1 });
+  else hint = T('Wait (Space) to let time pass.');
   $('hint-banner').textContent = '💡 ' + hint;
-  announce('Hint: ' + hint);
+  announce(T('Hint: {hint}', { hint }));
   clearTimeout(showHint._t);
   showHint._t = setTimeout(() => { $('hint-banner').textContent = ''; }, 6000);
 }
@@ -771,36 +794,56 @@ function pauseGame() {
   analytics.log('pause', {});
 }
 
+// The note is a thunk so it follows a language change while the results are shown.
+let submissionNote = null;
 function setSubmissionNote(note, id) {
+  submissionNote = note ? { note, id } : null;
+  renderSubmissionNote();
+}
+function renderSubmissionNote() {
   const el = $('results-extra');
   el.innerHTML = '';
-  if (!note) return;
+  if (!submissionNote) return;
   const p = document.createElement('p');
-  if (id) p.id = id;
+  if (submissionNote.id) p.id = submissionNote.id;
   p.className = 'fine';
-  p.textContent = note;
+  p.textContent = typeof submissionNote.note === 'function' ? submissionNote.note() : submissionNote.note;
   el.appendChild(p);
+}
+
+function renderResultsText() {
+  const st = session.state;
+  if (!st || !st.score) return;
+  const s = st.score;
+  $('results-headline').textContent =
+    st.terminalReason === 'goal-complete'
+      ? T('Homestead goal complete with {left} time to spare!', { left: st.maxTicks - st.tick })
+      : T('Time is up — {done}/{goal} orders fulfilled.', { done: st.ordersFulfilled, goal: st.goalOrders });
+  const tb = $('score-breakdown').querySelector('tbody');
+  tb.innerHTML = '';
+  const labels = { orders: N('Orders'), harvests: N('Harvests'), crafting: N('Crafting'), coins: N('Coins'), variety: N('Crop variety'), timeBonus: N('Time bonus') };
+  for (const k of ['orders', 'harvests', 'crafting', 'coins', 'variety', 'timeBonus']) {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.scope = 'row';
+    th.textContent = T(labels[k]);
+    const td = document.createElement('td');
+    td.textContent = s[k];
+    tr.append(th, td);
+    tb.appendChild(tr);
+  }
+  $('score-total').textContent = s.total;
+  if (lastAchievement) $('achievements-earned').textContent = '🏅 ' + achievementName(lastAchievement);
+  renderSubmissionNote();
 }
 
 function showResults(envelope, note) {
   const st = session.state;
   const s = st.score;
-  $('results-headline').textContent =
-    st.terminalReason === 'goal-complete'
-      ? `Homestead goal complete with ${st.maxTicks - st.tick} time to spare!`
-      : `Time is up — ${st.ordersFulfilled}/${st.goalOrders} orders fulfilled.`;
-  const tb = $('score-breakdown').querySelector('tbody');
-  tb.innerHTML = '';
-  const labels = { orders: 'Orders', harvests: 'Harvests', crafting: 'Crafting', coins: 'Coins', variety: 'Crop variety', timeBonus: 'Time bonus' };
-  for (const k of ['orders', 'harvests', 'crafting', 'coins', 'variety', 'timeBonus']) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<th scope="row">${labels[k]}</th><td>${s[k]}</td>`;
-    tb.appendChild(tr);
-  }
-  $('score-total').textContent = s.total;
-  setSubmissionNote(note);
+  submissionNote = note ? { note } : null;
+  renderResultsText();
   $('btn-next').style.display = (st.mode === 'journey' && st.terminalReason === 'goal-complete' && progress.journeyStage <= 40) ? '' : 'none';
-  announceScore('Session over. ' + $('results-headline').textContent + ' Total score ' + s.total + '.');
+  announceScore(T('Session over. {headline} Total score {total}.', { headline: $('results-headline').textContent, total: s.total }));
   showScreen('screen-results');
 }
 
@@ -835,8 +878,8 @@ function setupScreens() {
   });
   $('btn-share-seed').addEventListener('click', async () => {
     const seed = R.dailySeed(platform.utcDate());
-    try { await navigator.clipboard.writeText(seed); announce('Seed copied: ' + seed); }
-    catch { announce('Seed: ' + seed); }
+    try { await navigator.clipboard.writeText(seed); announce(T('Seed copied: {seed}', { seed })); }
+    catch { announce(T('Seed: {seed}', { seed })); }
   });
   $('btn-tutorial-skip').addEventListener('click', () => {
     $('tutorial-bubble').hidden = true;
@@ -847,47 +890,74 @@ function setupScreens() {
   $('btn-away-continue').addEventListener('click', () => { hideScreens(); screenStack = []; setStatus('playing'); });
 }
 
-function openSetup(mode) {
+// Setup text is rebuilt from the pending config, so a language change keeps the
+// session's seed and the selected difficulty / variant.
+function renderSetupText() {
+  const cfg = session._pendingConfig;
+  if (!cfg) return;
   const details = $('setup-details');
   const options = $('setup-options');
-  let cfg = null;
+  const mode = cfg.mode;
+  const prevSelect = options.querySelector('select');
+  const prev = prevSelect ? prevSelect.value : null;
+  const para = (html, cls) => `<p${cls ? ' class="' + cls + '"' : ''}>${html}</p>`;
   options.innerHTML = '';
   if (mode === 'learn') {
-    cfg = R.defaultConfig('learn', 'learn-seed', { maxTicks: 60, goalOrders: 2, plotCount: 8, allowedCrops: ['turnip', 'carrot'], allowedRecipes: [], difficulty: 'easy', assists: { hints: true, undo: true } });
-    details.innerHTML = '<p>Interactive lessons. Unranked. About 3 minutes.</p>';
+    details.innerHTML = para(T('Interactive lessons. Unranked. About 3 minutes.'));
   } else if (mode === 'journey') {
-    const st = progress.journeyStage;
-    cfg = R.journeyStage(st);
-    details.innerHTML = `<p>Stage ${st}/40${cfg.mastery ? ' — <b>Mastery stage</b> (smaller field!)' : ''}. Ranked: no. Goal: ${cfg.goalOrders} orders in ${cfg.maxTicks} ticks.</p>`;
+    const vars = { stage: session._pendingStage, goal: cfg.goalOrders, ticks: cfg.maxTicks };
+    details.innerHTML = para(cfg.mastery
+      ? T('Stage {stage}/40 — <b>Mastery stage</b> (smaller field!). Ranked: no. Goal: {goal} orders in {ticks} ticks.', vars)
+      : T('Stage {stage}/40. Ranked: no. Goal: {goal} orders in {ticks} ticks.', vars));
   } else if (mode === 'daily') {
-    const date = platform.utcDate();
-    const seed = R.dailySeed(date);
-    cfg = R.defaultConfig('daily', seed, { maxTicks: 100, goalOrders: 8, difficulty: 'normal' });
-    details.innerHTML = `<p>Daily challenge for <b>${date}</b>. One shared seed for everyone. ${platform.hosted ? 'Your result is kept as a personal best, synced to your cloud save.' : '<b>Ranked.</b>'}</p>`;
-    if (progress.completedDailies[date]) details.innerHTML += `<p class="fine">Completed today: ${progress.completedDailies[date]} points. You can replay to improve.</p>`;
+    const date = session._pendingDate;
+    details.innerHTML = para(T('Daily challenge for <b>{date}</b>. One shared seed for everyone.', { date }) + ' ' +
+      (platform.hosted ? T('Your result is kept as a personal best, synced to your cloud save.') : T('<b>Ranked.</b>')));
+    if (progress.completedDailies[date]) details.innerHTML += para(T('Completed today: {points} points. You can replay to improve.', { points: progress.completedDailies[date] }), 'fine');
   } else if (mode === 'practice') {
-    cfg = R.defaultConfig('practice', 'practice-' + Math.floor(Math.random() * 1e9), { assists: { hints: true, undo: true } });
-    details.innerHTML = '<p>Relaxed play with undo. Unranked, no effect on ratings.</p>';
-    options.innerHTML = `<label>Difficulty
+    details.innerHTML = para(T('Relaxed play with undo. Unranked, no effect on ratings.'));
+    options.innerHTML = `<label>${T('Difficulty')}
       <select id="opt-difficulty">
-        <option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option>
+        <option value="easy">${T('Easy')}</option><option value="normal" selected>${T('Normal')}</option><option value="hard">${T('Hard')}</option>
       </select></label>`;
   } else if (mode === 'challenge') {
-    cfg = R.defaultConfig('challenge', 'challenge-blitz', { maxTicks: 40, goalOrders: 5, plotCount: 8, difficulty: 'normal' });
-    details.innerHTML = '<p><b>Blitz:</b> fulfill 5 orders in only 40 ticks. Ranked: no.</p>';
-    options.innerHTML = `<label>Variant
+    details.innerHTML = para(T('<b>Blitz:</b> fulfill 5 orders in only 40 ticks. Ranked: no.'));
+    options.innerHTML = `<label>${T('Variant')}
       <select id="opt-variant">
-        <option value="blitz">Blitz (time limit)</option>
-        <option value="small">Small field (8 plots)</option>
-        <option value="nocraft">No crafting</option>
+        <option value="blitz">${T('Blitz (time limit)')}</option>
+        <option value="small">${T('Small field (8 plots)')}</option>
+        <option value="nocraft">${T('No crafting')}</option>
       </select></label>`;
   } else if (mode === 'score') {
+    details.innerHTML = para(platform.hosted
+      ? T('Fixed seed score chase. <b>Ranked</b> on the StarHermit leaderboard.')
+      : T('Fixed seed score chase. <b>Ranked</b> on the global board.'));
+  }
+  const sel = options.querySelector('select');
+  if (sel && prev) sel.value = prev;
+}
+
+function openSetup(mode) {
+  let cfg = null;
+  $('setup-options').innerHTML = '';
+  if (mode === 'learn') {
+    cfg = R.defaultConfig('learn', 'learn-seed', { maxTicks: 60, goalOrders: 2, plotCount: 8, allowedCrops: ['turnip', 'carrot'], allowedRecipes: [], difficulty: 'easy', assists: { hints: true, undo: true } });
+  } else if (mode === 'journey') {
+    session._pendingStage = progress.journeyStage;
+    cfg = R.journeyStage(progress.journeyStage);
+  } else if (mode === 'daily') {
+    const date = platform.utcDate();
+    session._pendingDate = date;
+    cfg = R.defaultConfig('daily', R.dailySeed(date), { maxTicks: 100, goalOrders: 8, difficulty: 'normal' });
+  } else if (mode === 'practice') {
+    cfg = R.defaultConfig('practice', 'practice-' + Math.floor(Math.random() * 1e9), { assists: { hints: true, undo: true } });
+  } else if (mode === 'challenge') {
+    cfg = R.defaultConfig('challenge', 'challenge-blitz', { maxTicks: 40, goalOrders: 5, plotCount: 8, difficulty: 'normal' });
+  } else if (mode === 'score') {
     cfg = R.defaultConfig('score', 'scorechase-' + platform.utcDate(), { maxTicks: 120, goalOrders: 10, difficulty: 'hard' });
-    details.innerHTML = platform.hosted
-      ? '<p>Fixed seed score chase. <b>Ranked</b> on the StarHermit leaderboard.</p>'
-      : '<p>Fixed seed score chase. <b>Ranked</b> on the global board.</p>';
   }
   session._pendingConfig = cfg;
+  renderSetupText();
   showScreen('screen-setup');
   $('btn-start-session').onclick = () => {
     let cfg2 = session._pendingConfig;
@@ -968,8 +1038,7 @@ function osReducedMotion() {
 }
 
 /* ---- Settings → Graphics (quality model in js/gfx.js, strings in js/gfx-strings.js) ---- */
-const gfxLocale = pickLocale(navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]);
-const GT = (key, vars) => gfxText(gfxLocale, key, vars);
+const GT = (key, vars) => gfxText(lang(), key, vars);
 function saveGfx(next) {
   settings.gfx = next;
   saveSettings();
@@ -984,8 +1053,11 @@ function gfxSummary() {
   $('gfx-post-note').hidden = !info.postFailed;
 }
 function renderGraphicsSection() {
-  const sec = $('gfx-section');
-  if (!sec) return;
+  // Redraw only the game's own box: the shared Language / Sound / Report
+  // sections (game-options.js) are mounted after it in #gfx-section.
+  const sec = $('gfx-own');
+  const outer = $('gfx-section');
+  if (!sec || !outer) return;
   sec.innerHTML = '';
   const saved = settings.gfx || {};
   const detected = renderer ? Render.graphicsInfo(renderer).detected : 'low';
@@ -993,7 +1065,7 @@ function renderGraphicsSection() {
   const h = document.createElement('h2');
   h.id = 'gfx-h';
   h.textContent = GT('section');
-  sec.setAttribute('aria-labelledby', 'gfx-h');
+  outer.setAttribute('aria-labelledby', 'gfx-h');
   sec.appendChild(h);
   const row = (id, label, input, extra) => {
     const l = document.createElement('label');
@@ -1058,7 +1130,24 @@ function renderGraphicsSection() {
   requestAnimationFrame(() => requestAnimationFrame(() => { if ($('gfx-summary')) gfxSummary(); }));
 }
 function renderSettings() {
-  const f = $('settings-form');
+  // Built once: the game's rows (#settings-own) and Graphics box (#gfx-own) are
+  // redrawn in place; the shared options mounted in #gfx-section stay.
+  const form = $('settings-form');
+  let f = $('settings-own');
+  if (!f) {
+    form.innerHTML = '';
+    f = document.createElement('div');
+    f.id = 'settings-own';
+    f.className = 'settings-own';
+    const gsec = document.createElement('section');
+    gsec.id = 'gfx-section';
+    gsec.className = 'gfx-section';
+    const own = document.createElement('div');
+    own.id = 'gfx-own';
+    own.className = 'gfx-own';
+    gsec.appendChild(own);
+    form.append(f, gsec);
+  }
   f.innerHTML = '';
   const row = (label, input) => {
     const l = document.createElement('label');
@@ -1079,59 +1168,68 @@ function renderSettings() {
   };
   const select = (opts, val, fn) => {
     const s = document.createElement('select');
-    for (const o of opts) { const op = document.createElement('option'); op.value = op.textContent = o; s.appendChild(op); }
+    for (const o of opts) { const op = document.createElement('option'); op.value = o; op.textContent = T(PALETTE_NAMES[o] || o); s.appendChild(op); }
     s.value = val;
     s.addEventListener('change', () => fn(s.value));
     return s;
   };
-  row('Music volume', range(settings.volumes.music, v => { settings.volumes.music = v; saveSettings(); }));
-  row('Effects volume', range(settings.volumes.effects, v => { settings.volumes.effects = v; saveSettings(); }));
-  row('Ambience volume', range(settings.volumes.ambience, v => { settings.volumes.ambience = v; saveSettings(); }));
-  row('Voice volume', range(settings.volumes.voice, v => { settings.volumes.voice = v; saveSettings(); }));
-  row('Mute all', check(settings.muted, v => { settings.muted = v; saveSettings(); }));
-  row('Reduced motion', check(settings.reducedMotion, v => { settings.reducedMotion = v; saveSettings(); }));
-  row('High contrast', check(settings.highContrast, v => { settings.highContrast = v; saveSettings(); }));
-  row('Color palette', select(['default', 'deuteranopia', 'protanopia', 'tritanopia', 'high-contrast'], settings.palette, v => { settings.palette = v; saveSettings(); }));
-  row('Larger text', check(settings.textScale > 1, v => { settings.textScale = v ? 1.25 : 1; saveSettings(); }));
-  row('Left-handed controls', check(settings.leftHanded, v => { settings.leftHanded = v; saveSettings(); }));
-  row('Hold to confirm', check(settings.holdToConfirm, v => { settings.holdToConfirm = v; saveSettings(); }));
-  row('Timing assistance', check(settings.timingAssist, v => { settings.timingAssist = v; saveSettings(); }));
-  row('Haptics', check(settings.haptics, v => { settings.haptics = v; saveSettings(); }));
-  row('Captions', check(settings.captions, v => { settings.captions = v; saveSettings(); }));
-  row('Replay tutorial', (() => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = 'Start'; b.addEventListener('click', () => { openSetup('learn'); }); return b; })());
-  const gsec = document.createElement('section');
-  gsec.id = 'gfx-section';
-  gsec.className = 'gfx-section';
-  f.appendChild(gsec);
+  row(T('Music volume'), range(settings.volumes.music, v => { settings.volumes.music = v; saveSettings(); }));
+  row(T('Effects volume'), range(settings.volumes.effects, v => { settings.volumes.effects = v; saveSettings(); }));
+  row(T('Ambience volume'), range(settings.volumes.ambience, v => { settings.volumes.ambience = v; saveSettings(); }));
+  row(T('Voice volume'), range(settings.volumes.voice, v => { settings.volumes.voice = v; saveSettings(); }));
+  row(T('Mute all'), check(settings.muted, v => { settings.muted = v; saveSettings(); }));
+  row(T('Reduced motion'), check(settings.reducedMotion, v => { settings.reducedMotion = v; saveSettings(); }));
+  row(T('High contrast'), check(settings.highContrast, v => { settings.highContrast = v; saveSettings(); }));
+  row(T('Color palette'), select(['default', 'deuteranopia', 'protanopia', 'tritanopia', 'high-contrast'], settings.palette, v => { settings.palette = v; saveSettings(); }));
+  row(T('Larger text'), check(settings.textScale > 1, v => { settings.textScale = v ? 1.25 : 1; saveSettings(); }));
+  row(T('Left-handed controls'), check(settings.leftHanded, v => { settings.leftHanded = v; saveSettings(); }));
+  row(T('Hold to confirm'), check(settings.holdToConfirm, v => { settings.holdToConfirm = v; saveSettings(); }));
+  row(T('Timing assistance'), check(settings.timingAssist, v => { settings.timingAssist = v; saveSettings(); }));
+  row(T('Haptics'), check(settings.haptics, v => { settings.haptics = v; saveSettings(); }));
+  row(T('Captions'), check(settings.captions, v => { settings.captions = v; saveSettings(); }));
+  row(T('Replay tutorial'), (() => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = T('Start'); b.addEventListener('click', () => { openSetup('learn'); }); return b; })());
   renderGraphicsSection();
 }
+const PALETTE_NAMES = { default: N('Default'), deuteranopia: N('Deuteranopia'), protanopia: N('Protanopia'), tritanopia: N('Tritanopia'), 'high-contrast': N('High contrast') };
 
 /* ================= help ================= */
 function renderHelp() {
   const el = $('help-cards');
   el.innerHTML = '';
   const cards = [
-    ['Goal', 'Fulfill orders before time runs out. Every action (plant, water, harvest, craft, wait) advances time by one tick.'],
-    ['Planting', 'Pick a seed tool (keys 1–3) then a plot. Each crop grows only in its seasons — the banner shows the current season.'],
-    ['Watering', 'Crops grow one stage per tick only while watered. Water (W) after every action. A crop left thirsty for 4 ticks withers.'],
-    ['Harvest & Craft', 'Harvest (H) ready crops into your inventory. Combine crops into goods like Garden Salad and Harvest Pie for higher order rewards.'],
-    ['Orders', 'Orders are listed on the left. When you have the items, the order is highlighted — press Fulfill to earn coins and score.'],
-    ['Controls', `${['left', 'right', 'up', 'down'].map(keysFor).join(' ')} move between plots, ${keysFor('activate')} acts, ${keysFor('wait')} waits, ${keysFor('undo')} undo (practice), ${keysFor('pause')} pause, ${keysFor('hint')} hint, ${keysFor('camera')} reset camera, ${keysFor('back')} back. Touch: tap a tool then a plot; drag to orbit the camera.`],
-    ['Scoring', 'Score = orders + harvests×5 + crafting×15 + coins + variety×25 + time bonus. Ties break on goal completion, fewer invalid actions, then faster time.'],
+    [T('Goal'), T('Fulfill orders before time runs out. Every action (plant, water, harvest, craft, wait) advances time by one tick.')],
+    [T('Planting'), T('Pick a seed tool (keys 1–3) then a plot. Each crop grows only in its seasons — the banner shows the current season.')],
+    [T('Watering'), T('Crops grow one stage per tick only while watered. Water (W) after every action. A crop left thirsty for 4 ticks withers.')],
+    [T('Harvest & Craft'), T('Harvest (H) ready crops into your inventory. Combine crops into goods like Garden Salad and Harvest Pie for higher order rewards.')],
+    [T('Orders'), T('Orders are listed on the left. When you have the items, the order is highlighted — press Fulfill to earn coins and score.')],
+    [T('Controls'), T('{move} move between plots, {act} acts, {wait} waits, {undo} undo (practice), {pause} pause, {hint} hint, {camera} reset camera, {back} back. Touch: tap a tool then a plot; drag to orbit the camera.', {
+      move: ['left', 'right', 'up', 'down'].map(keysFor).join(' '), act: keysFor('activate'), wait: keysFor('wait'), undo: keysFor('undo'),
+      pause: keysFor('pause'), hint: keysFor('hint'), camera: keysFor('camera'), back: keysFor('back'),
+    })],
+    [T('Scoring'), T('Score = orders + harvests×5 + crafting×15 + coins + variety×25 + time bonus. Ties break on goal completion, fewer invalid actions, then faster time.')],
   ];
   for (const [t, body] of cards) {
     const d = document.createElement('div');
     d.className = 'card';
-    d.innerHTML = `<h3>${t}</h3><p>${body}</p>`;
+    const h = document.createElement('h3');
+    h.textContent = t;
+    const p = document.createElement('p');
+    p.textContent = body;
+    d.append(h, p);
     el.appendChild(d);
   }
 }
 
 /* ================= leaderboard & friends ================= */
+let currentBoard = 'global';
 async function renderLeaderboard(board) {
+  currentBoard = board;
   const list = $('lb-list');
   const note = $('lb-note');
-  list.innerHTML = '<li>Loading…</li>';
+  list.innerHTML = '';
+  const loading = document.createElement('li');
+  loading.textContent = T('Loading…');
+  list.appendChild(loading);
   note.textContent = '';
   let rows = [];
   if (platform.hosted) {
@@ -1139,30 +1237,31 @@ async function renderLeaderboard(board) {
       if (board === 'daily') {
         // the platform leaderboard is a single board; per-day rows live on the local board
         rows = localBoardRows('daily');
-        note.textContent = "Today's seed — your scores (local). The platform board is global.";
+        note.textContent = T("Today's seed — your scores (local). The platform board is global.");
       } else {
         rows = await platform.leaderboardEntries(board === 'friends');
         note.textContent = board === 'friends'
-          ? 'Platform leaderboard — friends only (read-only). Ranked rows are validated platform-side.'
-          : 'Platform leaderboard (read-only). Ranked rows are validated platform-side.';
+          ? T('Platform leaderboard — friends only (read-only). Ranked rows are validated platform-side.')
+          : T('Platform leaderboard (read-only). Ranked rows are validated platform-side.');
         if (!rows.length) {
-          note.textContent += ' No platform entries — showing local records.';
+          note.textContent += ' ' + T('No platform entries — showing local records.');
           rows = localBoardRows(board);
         }
       }
     } catch (e) {
-      note.textContent = 'Platform leaderboard unavailable (' + e.message + ') — showing local board.';
+      note.textContent = T('Platform leaderboard unavailable ({error}) — showing local board.', { error: e.message });
       rows = localBoardRows(board);
     }
   } else {
     rows = localBoardRows(board);
-    note.textContent = 'Local board (this device).';
+    note.textContent = T('Local board (this device).');
   }
+  if (board !== currentBoard) return; // a newer tab (or language refresh) took over
   list.innerHTML = '';
-  if (!rows.length) list.innerHTML = '<li>No scores yet — be the first!</li>';
+  if (!rows.length) { const li = document.createElement('li'); li.textContent = T('No scores yet — be the first!'); list.appendChild(li); }
   rows.slice(0, 20).forEach((r, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${i + 1}. ${escapeHtml(r.name || 'Player')}</span><span><b>${r.score}</b></span>`;
+    li.innerHTML = `<span>${i + 1}. ${escapeHtml(r.name || T('Player'))}</span><span><b>${r.score}</b></span>`;
     list.appendChild(li);
   });
 }
@@ -1184,38 +1283,39 @@ async function renderFriends() {
     try { entries = await platform.leaderboardEntries(true); } catch { entries = []; }
     const best = {};
     for (const e of entries) best[String(e.userId)] = e.score;
-    if (!friends.length) ul.innerHTML = '<li class="fine">No friends on the platform yet. Use Invite a friend to send a link.</li>';
+    ul.innerHTML = '';
+    if (!friends.length) ul.innerHTML = `<li class="fine">${escapeHtml(T('No friends on the platform yet. Use Invite a friend to send a link.'))}</li>`;
     for (const f of friends) {
       const score = best[String(f.userId)];
       const li = document.createElement('li');
-      li.innerHTML = `<span>${f.online ? '🟢 ' : ''}${escapeHtml(f.name)}</span><span>${score != null ? score + ' pts' : 'no scores'}</span>`;
+      li.innerHTML = `<span>${f.online ? '🟢 ' : ''}${escapeHtml(f.name)}</span><span>${escapeHtml(score != null ? T('{n} pts', { n: score }) : T('no scores'))}</span>`;
       ul.appendChild(li);
     }
     return;
   }
   addRow.style.display = '';
-  if (!progress.friends.length) ul.innerHTML = '<li class="fine">No friends added yet.</li>';
+  if (!progress.friends.length) ul.innerHTML = `<li class="fine">${escapeHtml(T('No friends added yet.'))}</li>`;
   for (const f of progress.friends) {
     const li = document.createElement('li');
     const best = progress.localBoard.filter(r => r.name === f).map(r => r.score).sort((a, b) => b - a)[0];
-    li.innerHTML = `<span>${escapeHtml(f)}</span><span>${best != null ? best + ' pts' : 'no scores'}</span>`;
+    li.innerHTML = `<span>${escapeHtml(f)}</span><span>${escapeHtml(best != null ? T('{n} pts', { n: best }) : T('no scores'))}</span>`;
     ul.appendChild(li);
   }
 }
 
 function renderProfile() {
   const who = platform.hosted
-    ? `<p class="fine">Playing as <b>${escapeHtml(platform.displayName())}</b> · cloud save: ${platform.sync}</p>`
-    : '<p class="fine">Local profile — progress is saved on this device.</p>';
+    ? `<p class="fine">${T('Playing as <b>{name}</b> · cloud save: {sync}', { name: escapeHtml(platform.displayName()), sync: escapeHtml(platform.syncText()) })}</p>`
+    : `<p class="fine">${T('Local profile — progress is saved on this device.')}</p>`;
   $('profile-summary').innerHTML = who +
-    `<p>Journey stage ${progress.journeyStage}/40 · Mastery ${progress.masteryXp} XP · Lifetime coins 🪙${progress.lifetimeCoins} · Daily streak ${progress.dailyStreak}</p>`;
+    `<p>${T('Journey stage {stage}/40 · Mastery {xp} XP · Lifetime coins 🪙{coins} · Daily streak {streak}', { stage: progress.journeyStage, xp: progress.masteryXp, coins: progress.lifetimeCoins, streak: progress.dailyStreak })}</p>`;
   const ul = $('achievements-list');
   ul.innerHTML = '';
   for (const a of ACHIEVEMENTS) {
     const li = document.createElement('li');
     const got = !!progress.achievements[a.key];
     li.className = got ? '' : 'locked';
-    li.textContent = (got ? '🏅 ' : '🔒 ') + a.name + ' — ' + a.desc;
+    li.textContent = (got ? '🏅 ' : '🔒 ') + T(a.name) + ' — ' + T(a.desc);
     ul.appendChild(li);
   }
   const mt = $('mastery-track');
@@ -1227,7 +1327,7 @@ function renderProfile() {
 
 /* ================= title / daily countdown ================= */
 function refreshTitle() {
-  $('journey-progress-label').textContent = 'Stage ' + progress.journeyStage + '/40';
+  $('journey-progress-label').textContent = T('Stage {stage}/40', { stage: progress.journeyStage });
   updateDailyCountdown();
 }
 function updateDailyCountdown() {
@@ -1236,11 +1336,41 @@ function updateDailyCountdown() {
   next.setUTCHours(24, 0, 0, 0);
   const ms = next.getTime() - now;
   const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
-  $('daily-countdown').textContent = `Next seed in ${h}h ${m}m`;
+  $('daily-countdown').textContent = T('Next seed in {h}h {m}m', { h, m });
 }
 setInterval(updateDailyCountdown, 30000);
 
 /* ================= resume / snapshot ================= */
+let awaySummary = null;
+function renderAwaySummary() {
+  if (!awaySummary) return;
+  const { state, awayMin } = awaySummary;
+  const vars = { mode: T(MODE_NAMES[state.mode] || state.mode), tick: state.tick, max: state.maxTicks, done: state.ordersFulfilled, goal: state.goalOrders, min: awayMin };
+  $('away-summary').textContent = awayMin > 0
+    ? T('Your {mode} session was saved at time {tick}/{max} ({done}/{goal} orders, {min} min ago). The solo simulation paused while you were away.', vars)
+    : T('Your {mode} session was saved at time {tick}/{max} ({done}/{goal} orders). The solo simulation paused while you were away.', vars);
+}
+
+/* Language changes (Settings → Language) re-render every visible text in place:
+   static markup is handled by js/i18n.js, everything built in code here. */
+function onLanguageChange() {
+  $('btn-signin').textContent = shT().signIn;
+  $('btn-invite').textContent = shT().invite;
+  updateIdentityUI();
+  platform.setSync(platform.sync);
+  refreshTitle();
+  renderHelp();
+  if (session.state) refreshAll();
+  if (session.tutorialStep >= 0) showTutorialStep(true);
+  if ($('settings-own')) renderSettings();
+  if (document.querySelector('#screen-setup.open')) renderSetupText();
+  if (document.querySelector('#screen-results.open')) renderResultsText();
+  if (document.querySelector('#screen-profile.open')) renderProfile();
+  if (document.querySelector('#screen-leaderboard.open')) renderLeaderboard(currentBoard);
+  if (document.querySelector('#screen-friends.open')) renderFriends();
+  if (document.querySelector('#screen-away.open')) renderAwaySummary();
+}
+document.addEventListener('ms-language', onLanguageChange);
 function tryResume() {
   const snap = store.get('snapshot', null);
   if (!snap || snap.schema !== 1) return false;
@@ -1255,10 +1385,8 @@ function tryResume() {
     session.startedAt = Date.now() - (Number.isFinite(snap.elapsedMs) ? Math.max(0, snap.elapsedMs) : 0);
     session.cmdSerial = session.log.length;
     Audio.setSeed(snap.config.seed);
-    const awayMin = Math.round((Date.now() - snap.savedAt) / 60000);
-    $('away-summary').textContent =
-      `Your ${state.mode} session was saved at time ${state.tick}/${state.maxTicks} ` +
-      `(${state.ordersFulfilled}/${state.goalOrders} orders${awayMin > 0 ? ', ' + awayMin + ' min ago' : ''}). The solo simulation paused while you were away.`;
+    awaySummary = { state, awayMin: Math.round((Date.now() - snap.savedAt) / 60000) };
+    renderAwaySummary();
     hideScreens();
     showScreen('screen-away');
     refreshAll();
@@ -1358,14 +1486,14 @@ function boot() {
   window.addEventListener('beforeunload', saveSnapshot);
   window.addEventListener('pagehide', () => { saveSnapshot(); platform.cloudFlush(); });
 
-  $('btn-signin').textContent = shT.signIn;
-  $('btn-invite').textContent = shT.invite;
+  $('btn-signin').textContent = shT().signIn;
+  $('btn-invite').textContent = shT().invite;
   $('btn-signin').addEventListener('click', () => platform.signIn());
   $('btn-invite').addEventListener('click', async () => {
     const link = platform.inviteLink();
     if (!link) return;
-    try { await navigator.clipboard.writeText(link); toastShort(shT.copied); }
-    catch { toastShort(shT.copyFailed); }
+    try { await navigator.clipboard.writeText(link); toastShort(shT().copied); }
+    catch { toastShort(shT().copyFailed); }
   });
   platform.init().then(async () => {
     if (platform.hosted) {

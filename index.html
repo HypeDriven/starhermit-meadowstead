@@ -17,6 +17,9 @@
 <script src="ui-scale.js"></script>
 <script src="browser-guard.js"></script>
 <script src="starhermit-sdk.js"></script>
+<script src="sh-language.js"></script>
+<script src="js/strings.js"></script>
+<script src="js/i18n.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#playfield">Skip to playfield</a>
@@ -25,10 +28,10 @@
   <!-- ============ HUD status bar ============ -->
   <header id="statusbar" role="banner">
     <button id="btn-drawer-left" class="chip btn drawer-toggle" aria-expanded="false" aria-controls="rail-left" aria-label="Open objective and orders panel">📋</button>
-    <span id="sb-season" class="chip">Spring</span>
-    <span id="sb-tick" class="chip">Time 0/0</span>
+    <span id="sb-season" class="chip" data-i18n-skip>Spring</span>
+    <span id="sb-tick" class="chip" data-i18n-skip>Time 0/0</span>
     <span id="sb-coins" class="chip">🪙 0</span>
-    <span id="sb-score" class="chip">Score 0</span>
+    <span id="sb-score" class="chip" data-i18n-skip>Score 0</span>
     <span id="sb-mode" class="chip">—</span>
     <span id="sb-player" class="chip" hidden></span>
     <span id="sb-sync" class="chip" hidden></span>
@@ -94,7 +97,7 @@
   <div id="screens">
 
     <section id="screen-title" class="screen" aria-labelledby="title-h">
-      <h1 id="title-h">Meadowstead</h1>
+      <h1 id="title-h" data-i18n-skip>Meadowstead</h1>
       <p class="tagline">Restore a gentle homestead through the seasons.</p>
       <button id="btn-play" class="btn primary big">▶ Play</button>
       <div class="title-row">
@@ -107,8 +110,8 @@
         <button id="btn-settings-title" class="btn">⚙ Settings</button>
       </div>
       <div class="title-row">
-        <button id="btn-signin" class="btn" hidden>Sign in with StarHermit</button>
-        <button id="btn-invite" class="btn" hidden>Invite a friend</button>
+        <button id="btn-signin" class="btn" hidden data-i18n-skip>Sign in with StarHermit</button>
+        <button id="btn-invite" class="btn" hidden data-i18n-skip>Invite a friend</button>
       </div>
     </section>
 
