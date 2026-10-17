@@ -1049,7 +1049,8 @@ function gfxSummary() {
   const info = Render.graphicsInfo(renderer);
   const words = {};
   for (const k of ['noShadows', 'shadows', 'aoFull', 'ao', 'bloom', 'reflections', 'noAA']) words[k] = GT('w_' + k);
-  $('gfx-summary').textContent = (info.gpu || GT('unknownGpu')) + ' · ' + GFX.describe(info.resolved, info.pixels, words);
+  $('gfx-summary').textContent = [info.gpu || GT('unknownGpu'), info.level != null ? GT('level', { n: info.level }) : null,
+    GFX.describe(info.resolved, info.pixels, words)].filter(Boolean).join(' · ');
   $('gfx-post-note').hidden = !info.postFailed;
 }
 function renderGraphicsSection() {
@@ -1060,8 +1061,9 @@ function renderGraphicsSection() {
   if (!sec || !outer) return;
   sec.innerHTML = '';
   const saved = settings.gfx || {};
-  const detected = renderer ? Render.graphicsInfo(renderer).detected : 'low';
-  const r = GFX.resolve(saved, detected);
+  const ginfo = renderer ? Render.graphicsInfo(renderer) : null;
+  const detected = ginfo ? ginfo.detected : 'low';
+  const r = GFX.resolve(saved, detected, ginfo ? ginfo.level : undefined);
   const h = document.createElement('h2');
   h.id = 'gfx-h';
   h.textContent = GT('section');

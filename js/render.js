@@ -69,7 +69,15 @@ function makeRenderer(THREE, canvas, opts) {
   R.renderer.toneMappingExposure = 1.05;
   R.renderer.shadowMap.type = THREE.PCFShadowMap;
   R.gpu = gpuName(R.renderer);
-  R.detected = R.gfx ? R.gfx.detectPreset(R.gpu, { mobile: !!opts.mobile }) : 'balanced';
+  // StarHermit hardware level (js/gpu-level.js): renderer string + device facts (phone/tablet, cores, memory).
+  let sys = { mobile: !!opts.mobile, webgl2: !!R.renderer.capabilities.isWebGL2 };
+  try {
+    const G = root.StarHermitGpu;
+    if (G) { const d = G.detectSystem(); sys = Object.assign(sys, { mobile: sys.mobile || d.mobile, touch: d.touch, screen: d.screen, cores: d.cores, memoryGb: d.memoryGb, astc: d.astc }); }
+  } catch (e) { /* defaults */ }
+  R.gpuLevel = R.gfx ? R.gfx.detectLevel(R.gpu, sys) : 0;
+  R.detected = R.gfx ? R.gfx.presetForLevel(R.gpuLevel) : 'balanced';
+  R.matTier = 'physical'; R.texSize = 256;
 
   R.scene = new THREE.Scene();
   R.scene.background = new THREE.Color(SEASON_TINT.spring.sky);
@@ -148,8 +156,8 @@ function buildEnvironment(R) {
   pond.rotation.x = -Math.PI / 2;
   pond.receiveShadow = true;
   pondGroup.add(pond);
-  R.pondMat = pond.material;
-  R.rippleTex = makeRippleNormalMap(THREE);
+  R.pondMesh = pond;
+  R.rippleTex = makeRippleNormalMap(THREE, R.texSize / 2);
   for (let i = 0; i < 2; i++) {
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(1 + i * 0.9, 1.15 + i * 0.9, 32),
@@ -164,7 +172,7 @@ function buildEnvironment(R) {
   pondGroup.position.set(-7.5, 0.01, 3.5);
   scene.add(pondGroup);
   R.pond = pondGroup;
-  R.grassTex = makeGrassTexture(THREE);
+  R.grassTex = makeGrassTexture(THREE, R.texSize);
 
   // Trees: procedural trunk + foliage tiers, deterministic placement
   const treeSpots = [[-9, -4], [-8.5, -1], [8.5, -4.5], [9, -1.5], [7.8, 2.5], [-9.5, 6.5], [9.5, 6]];
@@ -243,9 +251,11 @@ function canvas2d(size) {
 
 // Near-white grass luminance tile: the season hue stays on material.color, this only adds
 // mottling and blade speckle so the meadow stops reading as a flat plane.
-function makeGrassTexture(THREE) {
+// `size` is the preset's texture budget; the art is authored at 256 px and scaled.
+function makeGrassTexture(THREE, size) {
   try {
-    const [c, g] = canvas2d(256);
+    const [c, g] = canvas2d(size || 256);
+    g.scale((size || 256) / 256, (size || 256) / 256);
     g.fillStyle = '#e4e4e4'; g.fillRect(0, 0, 256, 256);
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -274,9 +284,9 @@ function makeGrassTexture(THREE) {
 }
 
 // Tileable ripple normal map for the pond (sum of integer-frequency waves, so it is seamless).
-function makeRippleNormalMap(THREE) {
+function makeRippleNormalMap(THREE, size) {
   try {
-    const N = 128;
+    const N = Math.max(32, Math.round(size || 128));
     const [c, g] = canvas2d(N);
     const img = g.createImageData(N, N);
     const h = (x, y) => {
@@ -338,9 +348,11 @@ function buildDetail(R) {
   // Grass tufts: three-blade cones, colour-varied per instance.
   const tuftGeo = new THREE.ConeGeometry(0.07, 0.42, 4);
   tuftGeo.translate(0, 0.21, 0);
-  const tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ roughness: 0.85 }), 420);
+  // Built at the largest budget; setGraphics draws the preset's share (budget.tufts clumps × 3 blades).
+  const tuftMax = (R.gfx && R.gfx.TUFT_MAX) || 140;
+  const tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ roughness: 0.85 }), tuftMax * 3);
   let k = 0;
-  place(140, 1000, (n, x, z, r) => {
+  place(tuftMax, 1000, (n, x, z, r) => {
     for (let b = 0; b < 3; b++) {
       p.set(x + (b - 1) * 0.08, 0, z + (((b * 7) % 3) - 1) * 0.06);
       e.set((b - 1) * 0.35, r * 6, (b - 1) * 0.25); q.setFromEuler(e);
@@ -351,6 +363,8 @@ function buildDetail(R) {
     }
   });
   tufts.count = k;
+  R.tuftsBuilt = k;
+  R.tufts = tufts;
   grp.add(tufts);
 
   // Wildflowers: small bright heads on the meadow (white, butter yellow, pink, lavender).
@@ -398,7 +412,8 @@ function buildDetail(R) {
 /* ---------- ambient pollen motes — `particles: high`, stopped by reduced motion ---------- */
 function buildAmbientParticles(R) {
   const { THREE } = R;
-  const N = 70;
+  const N = (R.gfx && R.gfx.MOTE_MAX) || 70; // built at the largest budget; the preset draws budget.motes
+  R.moteCount = Math.min(N, 70);
   const pos = new Float32Array(N * 3);
   R.moteBase = [];
   for (let i = 0; i < N; i++) {
@@ -592,6 +607,7 @@ function syncState(R, state, season, opts) {
       if (p.cropMesh) { p.group.remove(p.cropMesh); disposeGroup(p.cropMesh); p.cropMesh = null; }
       if (c) {
         const m = buildCropMesh(R, c.type, wantStage);
+        applyMaterialTier(R, m);
         m.userData.key = key;
         p.group.add(m);
         p.cropMesh = m;
@@ -650,7 +666,8 @@ function burst(R, plot, color, n) {
   const { THREE } = R;
   if (R.q && R.q.particles === 'high') n = Math.round(n * 1.5);
   const pos = plotPosition(plot, R.plots.length);
-  for (let i = 0; i < n && R.particles.length < 80; i++) {
+  const cap = R.q && R.q.budget ? R.q.budget.burst : 80;
+  for (let i = 0; i < n && R.particles.length < cap; i++) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4),
       new THREE.MeshBasicMaterial({ color }));
     m.position.set(pos.x, 0.8, pos.z);
@@ -672,12 +689,65 @@ function addTween(R, obj, tw) {
 // Forces a size + pixel-ratio recompute on the next frame (window resize, layout change).
 function resize(R) { R.size = [0, 0]; }
 
+// Shading-model variants (budget.material): Lambert on Low, Standard on Balanced, the authored
+// Standard/Physical (clear-coated pond and ripe crops) on High/Ultra. Variants are cached on the authored
+// material (userData.variants), so shared materials stay shared; the live colour/map/normal map carry over on a switch.
+function materialVariant(R, authored, tier) {
+  const kind = authored.isMeshPhysicalMaterial ? 'physical' : 'standard';
+  const want = tier === 'lambert' ? 'lambert' : (tier === 'standard' && kind === 'physical') ? 'standard' : kind;
+  if (want === kind) return authored;
+  const cache = authored.userData.variants || (authored.userData.variants = {});
+  if (cache[want]) return cache[want];
+  const THREE = R.THREE, a = authored;
+  const common = { color: a.color.clone(), map: a.map, emissive: a.emissive.clone(), emissiveIntensity: a.emissiveIntensity,
+    transparent: a.transparent, opacity: a.opacity, side: a.side, normalMap: a.normalMap };
+  const m = want === 'lambert' ? new THREE.MeshLambertMaterial(common)
+    : new THREE.MeshStandardMaterial(Object.assign(common, { roughness: a.roughness, metalness: a.metalness }));
+  if (a.normalMap) m.normalScale.copy(a.normalScale);
+  return (cache[want] = m);
+}
+function applyMaterialTier(R, root) {
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+    const authored = o.userData.matAuthored || o.material;
+    if (!authored.isMeshStandardMaterial) return; // basic / points / already-swapped non-lit stay as they are
+    o.userData.matAuthored = authored;
+    const cur = o.material, next = materialVariant(R, authored, R.matTier);
+    if (next === cur) return;
+    next.color.copy(cur.color);
+    if (next.map !== cur.map || next.normalMap !== cur.normalMap) { next.map = cur.map; next.normalMap = cur.normalMap; next.needsUpdate = true; }
+    o.material = next;
+  });
+}
+// Procedural meadow texture (and pond ripple normal map at half size) at the preset's texture budget.
+function applyTextureBudget(R, size) {
+  if (size === R.texSize) return;
+  R.texSize = size;
+  const oldGrass = R.grassTex, oldRipple = R.rippleTex;
+  R.grassTex = makeGrassTexture(R.THREE, size);
+  R.rippleTex = makeRippleNormalMap(R.THREE, size / 2);
+  const gm = R.ground.material, pm = R.pondMesh.material;
+  if (oldGrass && gm.map === oldGrass) { gm.map = R.grassTex; gm.needsUpdate = true; }
+  if (oldRipple && pm.normalMap === oldRipple) { pm.normalMap = R.rippleTex; pm.needsUpdate = true; }
+  if (oldGrass) oldGrass.dispose();
+  if (oldRipple) oldRipple.dispose();
+}
+
 /** Apply saved graphics settings (`settings.gfx`; `{}` = Auto). Live — no reload needed. */
 function setGraphics(R, saved) {
   if (!R.gfx) return;
   R.saved = saved || {};
-  const g = R.gfx.resolve(R.saved, R.detected);
+  const g = R.gfx.resolve(R.saved, R.detected, R.gpuLevel);
   R.q = g;
+  const b = g.budget;
+  // Asset variants: shading model and procedural texture size per preset.
+  R.matTier = b.material;
+  applyMaterialTier(R, R.scene);
+  applyTextureBudget(R, b.texture);
+  // Instance / particle budgets (scaled with the hardware level within the preset).
+  if (R.tufts) R.tufts.count = Math.min(R.tuftsBuilt, b.tufts * 3);
+  R.moteCount = Math.min(R.moteBase.length, b.motes);
+  R.motes.geometry.setDrawRange(0, R.moteCount);
   const size = R.gfx.SHADOW_MAP[g.shadows];
   const shadowsWere = R.renderer.shadowMap.enabled;
   R.renderer.shadowMap.enabled = size > 0;
@@ -695,10 +765,11 @@ function setGraphics(R, saved) {
   if (gm.map !== wantMap) { gm.map = wantMap; gm.needsUpdate = true; }
   // Pond: rippled clear-coat normals with scenery detail (they scroll when water is animated).
   const wantRipple = detailed ? R.rippleTex : null;
-  if (R.pondMat.normalMap !== wantRipple) {
-    R.pondMat.normalMap = wantRipple;
-    R.pondMat.normalScale.set(0.35, 0.35);
-    R.pondMat.needsUpdate = true;
+  const pondMat = R.pondMesh.material;
+  if (pondMat.normalMap !== wantRipple) {
+    pondMat.normalMap = wantRipple;
+    pondMat.normalScale.set(0.35, 0.35);
+    pondMat.needsUpdate = true;
   }
   applyEnvironment(R);
   R.adaptiveScale = 1;
@@ -735,6 +806,7 @@ function setAddons(R, addons) {
 function graphicsInfo(R) {
   return {
     gpu: R.gpu,
+    level: R.gpuLevel,
     detected: R.detected,
     resolved: R.q,
     pixels: [R.renderer.domElement.width, R.renderer.domElement.height],
@@ -757,6 +829,15 @@ function fpsVisible(R, on) {
   if (el) el.hidden = !on;
 }
 
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
 function buildPost(R, w, h) {
   const g = R.q, A = R.addons, THREE = R.THREE;
   if (R.composer) { try { R.composer.dispose(); } catch (e) { /* already gone */ } }
@@ -777,10 +858,10 @@ function buildPost(R, w, h) {
       ao.blendIntensity = 0.7;
       ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
-      composer.addPass(ao);
+      composer.addPass(atScale(ao, g.budget.aoRes));
     }
     // High threshold: only ready-crop halos, cottage windows, pollen and water glints bloom.
-    if (g.bloom === 'on') composer.addPass(new A.UnrealBloomPass(new THREE.Vector2(w, h), 0.4, 0.4, 0.92));
+    if (g.bloom === 'on') composer.addPass(atScale(new A.UnrealBloomPass(new THREE.Vector2(w, h), 0.4, 0.4, 0.92), g.budget.bloomRes));
     composer.addPass(new A.OutputPass());
     if (g.grade === 'on') composer.addPass(new A.ShaderPass(GradeShader));
     if (g.antialias === 'smaa') composer.addPass(new A.SMAAPass());
@@ -883,7 +964,7 @@ function frame(R, state, season, t) {
   R.motes.visible = motesOn;
   if (motesOn) {
     const arr = R.motes.geometry.attributes.position.array;
-    for (let i = 0; i < R.moteBase.length; i++) {
+    for (let i = 0; i < R.moteCount; i++) {
       const b = R.moteBase[i], ph = b[3] + R.time * 0.35;
       arr[i * 3] = b[0] + Math.sin(ph) * 0.8;
       arr[i * 3 + 1] = b[1] + Math.sin(ph * 1.7) * 0.25;
@@ -935,6 +1016,9 @@ function disposeGroup(obj) {
   obj.traverse ? obj.traverse(o => {
     if (o.geometry) o.geometry.dispose();
     if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); }
+    const a = o.userData && o.userData.matAuthored; // authored material + its cached tier variants
+    if (a) { a.dispose(); for (const v of Object.values(a.userData.variants || {})) v.dispose(); }
+
   }) : null;
 }
 

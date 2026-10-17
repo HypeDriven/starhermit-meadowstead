@@ -28,7 +28,8 @@ same decision.
 | `style.css` | Responsive grid shell, palette tokens, drawer behaviour, safe-area padding, screen overlays |
 | `js/rules.js` | Deterministic rules engine (UMD: `window.MeadowRules` in the browser, `module.exports` on the server). Pure, serializable, no DOM |
 | `js/render.js` | `window.MeadowRender` — Three.js scene, plot/crop meshes, selection and ghost layers, particles, palette shifts, graphics settings (`setGraphics`, `graphicsInfo`), post-processing chain, adaptive resolution |
-| `js/gfx.js` | Pure graphics quality model (no three.js): presets, per-category tiers, GPU detection (`detectPreset`), `resolve`, `presetTier`, `choosePreset`, `describe` |
+| `js/gpu-level.js` | Shared StarHermit hardware-level module (`window.StarHermitGpu`, loaded before `js/render.js`), copied from the platform tools, never edited here |
+| `js/gfx.js` | Pure graphics quality model (no three.js): presets, per-category tiers, hardware-level detection (`detectLevel`, `presetForLevel`, `detectPreset`), per-preset `BUDGETS`/`budgetFor`, `resolve`, `presetTier`, `choosePreset`, `describe` |
 | `js/gfx-strings.js` | Settings → Graphics strings in all nine required locales (looked up in the game's current language) |
 | `sh-language.js` | Shared StarHermit language resolver (unmodified copy): Automatic / explicit choice, `ui.language` sync |
 | `js/strings.js` | Translation tables for every player-facing string (English keys; nine locales) |
@@ -360,19 +361,53 @@ saturation, warm highlights/cool shadows, 0.2 vignette) → SMAA or FXAA; MSAA u
 Ambient motion — pond ripples, tree and crop sway, drifting pollen motes, larger particle bursts at High —
 stops under Reduced motion or the OS `prefers-reduced-motion` query. All layers are drawn by the camera;
 layers only scope raycasts to plots. **Settings → Graphics** (below the other settings, reachable from the
-title and pause menus) offers a Quality preset — Auto (chosen from the WebGL unmasked renderer: software
-renderers such as SwiftShader/llvmpipe get Low, discrete GPUs and Apple M-series High, everything else
-Balanced; touch devices cap Auto at Balanced), Low, Balanced, High, Ultra — a render scale (50–200 % of the
+title and pause menus) offers a Quality preset — Auto (chosen from the StarHermit hardware level, below),
+Low, Balanced, High, Ultra — a render scale (50–200 % of the
 preset's, which also caps the device pixel ratio at 1 / 1.5 / 2 / 2), one select per category with "From
 preset (…)" as default — shadows off/low/medium/high (1024²–4096²), ambient occlusion off/on/high, bloom,
 colour grade, anti-aliasing off/FXAA/SMAA/MSAA, reflections, pond water still/animated, wind sway, particles
 low/high, scenery detail plain/detailed — adaptive resolution (averages 90 frames; above 26 ms it steps the
 scale down 0.1 to a 0.6 floor, below 14 ms back up 0.05) and a frame-rate readout (top-left of the playfield,
-pointer-transparent), plus a summary line "GPU · cost · W×H px". Choosing a preset clears the overrides.
+pointer-transparent), plus a summary line "GPU · Level N · cost · W×H px" ("Level" localized). Choosing a preset clears the overrides.
 Changes apply live and persist in `settings.gfx` (`meadowstead:settings`, cloud-saved with the rest); the
 canvas and `<body>` carry `data-gfx-preset`. Low renders straight to the canvas with no post chain, no shadows
 and DPR 1 × 0.85 — the same cost as before the upgrade. The addons load after first paint; if they or the
 post chain fail, the game renders without post-processing and the panel says so.
+
+**Hardware-level detection.** `js/gpu-level.js` (shared StarHermit copy, `window.StarHermitGpu`) rates the
+WebGL unmasked renderer plus device facts (`detectSystem()`: phone/tablet, cores, memory, screen) on the
+StarHermit hardware level 0–20 (0 = Galaxy S20 / Intel UHD or weaker, every software renderer and no WebGL;
+20 = RTX 5090; each level ≈ 1.23×; laptop parts two levels below desktop; phones, tablets and ≤ 4 GB machines
+capped at 9). `gfx.js` maps it with `presetForLevel(level, { low: 0, balanced: 4, high: 10, ultra: 17 })`, so
+Auto picks Ultra on strong GPUs; adaptive resolution still steps down when slow. Headless SwiftShader is level
+0 → Low. Phones and tablets pace Auto FPS at half the display refresh rate ("Auto (half refresh rate)") and
+start at 16 simultaneous sounds (shared `game-options.js`).
+
+**Per-preset budgets** (`BUDGETS` / `budgetFor` in `js/gfx.js`). Each preset holds 60 FPS on the weakest GPU
+Auto gives it — Low at level 0, Balanced 4, High 10, Ultra 17. Plots, hit areas and rules are identical on
+every preset; only visuals change. Tuft and mote counts are tuned at the floor level and scale up within the
+preset on faster GPUs (`StarHermitGpu.scaleBudget`, ≤ 2×, capped at 280 clumps / 240 motes).
+
+| Budget | Low | Balanced | High | Ultra |
+|---|---|---|---|---|
+| Shading model (scenery, plots, crops, pond) | Lambert | Standard | Standard + Physical (clear-coated pond, pumpkins, roots) | as High |
+| Procedural meadow texture (ripple normal map: half) | 128 px | 256 px | 512 px | 1024 px |
+| Grass-tuft clumps (Scenery detail on, 3 blades each) | 60 | 100 | 140 | 140 |
+| Pollen motes (Particles high) | 24 | 40 | 70 | 120 |
+| Live burst-particle cap | 24 | 48 | 80 | 120 |
+| Bloom / GTAO resolution | ½ | ½ | ½ | full |
+
+Material variants are built from the authored Standard/Physical materials on demand and cached on them;
+switching presets swaps them live, carrying the watered-soil tint and maps across.
+
+**Benchmark** (`node tools/gfx-bench.mjs meadowstead`; hook `tests/gfx-bench.mjs` picks the preset in
+Settings → Graphics, starts Journey stage 1 and farms with the crop/W/H keys, arrows + Enter and the orders'
+Fulfill buttons, retrying from the results). Measured 2026-10-17 (GPU ms above the draws-skipped floor,
+projected to the preset's floor level; CPU p90 on the RTX 5090 run):
+
+- Desktop 1920×1080: PASS low (typical 0.24 / slow 0.99 ms GPU, CPU 1.30 ms); PASS balanced (2.66 / 3.04, CPU
+  2.90); PASS high (1.74 / 2.52, CPU 3.20); PASS ultra (2.34 / 2.56, CPU 2.70).
+- Mobile 390×844 @3×: PASS low (0.00 / 0.00, CPU 0.70); PASS balanced (0.00 / 0.06, CPU 1.00).
 
 **Visual assets the design calls for:** a title backdrop that says "restored homestead" before a word is
 read, a results illustration that pays off the harvest, a topsoil texture so plots read as tilled earth
@@ -574,8 +609,8 @@ which the static handler refuses to serve; per-IP buckets rate-limit scores (20/
 and telemetry (120/min); path traversal is blocked by a `ROOT + sep` prefix check.
 
 **Performance.** Graphics presets (§8 Graphics) set the pixel-ratio cap, render scale, shadow-map size and
-post chain; adaptive resolution trims the pixel ratio on slow devices; burst particles have a hard cap of 80
-live meshes. A hidden
+post chain, and each preset's budget (§8) caps shading model, texture size, tufts, motes and live burst
+particles (24 / 48 / 80 / 120 meshes); adaptive resolution trims the pixel ratio on slow devices. A hidden
 tab renders nothing and drops audio timers to a 2 s heartbeat. Context loss cancels the loop; restore rebuilds
 the renderer from CPU-side descriptors and re-syncs instantly. Without WebGL, `#webgl-fallback` says the game
 stays fully playable through the field controls — and it is.
@@ -589,8 +624,10 @@ the orders drawer to reach a Fulfill button. It never calls game internals to ch
 
 ## 14. Testing and acceptance criteria
 
-**`npm test`** — 18 tests in `tests/rules.test.js`, 6 in `tests/platform.test.mjs` (token, nickname, `game:<slug>` cloud save with ETags, a 412 save conflict reloaded/merged/re-saved, the progress merge, settings KV, bindings, friends, invite, zero fetches standalone), 4 in `tests/i18n.test.mjs` (every markup/code key in all nine locales with placeholders intact, live switching, Graphics/account strings) plus 6 in `tests/gfx.test.mjs` (GPU-string → preset
-detection including the touch cap, resolve with presets/overrides/invalid tiers, render-scale clamp, preset
+**`npm test`** — 18 tests in `tests/rules.test.js`, 6 in `tests/platform.test.mjs` (token, nickname, `game:<slug>` cloud save with ETags, a 412 save conflict reloaded/merged/re-saved, the progress merge, settings KV, bindings, friends, invite, zero fetches standalone), 4 in `tests/i18n.test.mjs` (every markup/code key in all nine locales with placeholders intact, live switching, Graphics/account strings) plus 8 in `tests/gfx.test.mjs` (hardware level → preset —
+SwiftShader/llvmpipe/no WebGL, AMD Radeon Graphics and Intel UHD → Low, Iris Xe → Balanced, GTX 1070 → High,
+RTX 4080/5090 → Ultra, phones such as Adreno 740 capped at Balanced — the per-preset budget table (explicit,
+non-decreasing, floor-level tuned, scaling with the level), resolve with presets/overrides/invalid tiers, render-scale clamp, preset
 choice clearing overrides, the cost summary, every locale carrying every Graphics string), all passing. The
 rules tests cover: deterministic replay (same seed + commands ⇒
 same hashes, different seeds diverge); the plant → water → harvest lifecycle, season legality (pumpkin is
@@ -604,7 +641,7 @@ exactly the play-time legal-action list; and daily seeds stable per date, distin
 
 **`npm run test:e2e`** — two passes (desktop 1280×800, mobile 390×844 touch), both passing: title →
 Settings → Graphics (Auto resolves to Low on swiftshader; Ultra, Low and High applied live via
-`data-gfx-preset`; a bloom override removes bloom from the summary; the frame-rate readout appears; preset
+`data-gfx-preset`; the summary shows "Level 0"; a bloom override removes bloom from the summary; the frame-rate readout appears; preset
 and override survive a reload; picking a preset clears the override) → **Language** (separate signed-in
 context with a stubbed StarHermit API: Automatic resolves to fr-CA from `GET /api/v1/me/language`; a Journey
 session starts in French; Pause → Settings → Italian re-renders the settings, pause screen, HUD and orders in

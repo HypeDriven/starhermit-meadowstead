@@ -262,6 +262,8 @@ async function playPass({ pass, viewport, hasTouch, mobile }) {
       await page.selectOption('#gfx-preset', 'high');
       await presetIs('high');
       await page.waitForFunction(() => /bloom/.test(document.getElementById('gfx-summary').textContent));
+      const sum = await page.textContent('#gfx-summary');
+      if (!/ · Level 0 · /.test(sum)) throw new Error('summary lacks the hardware level: ' + sum);
       await page.selectOption('#gfx-cat-bloom', 'off');
       await page.waitForFunction(() => !/bloom/.test(document.getElementById('gfx-summary').textContent));
       await page.locator('#gfx-fps').check();
