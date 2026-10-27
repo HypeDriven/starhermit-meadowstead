@@ -581,6 +581,7 @@ function playScreen(L: Layout, inert: boolean): void {
   // The 3D field draws into the playfield; the page colour around it, with the playfield's rounded corners.
   const sc = L.sc, wx = L.ox + pf.x * sc, wy = L.oy + pf.y * sc, ww = Math.max(1, pf.w * sc), wh = Math.max(1, pf.h * sc);
   render.setPlayfield(wx, wy, ww, wh);
+  if (!inert) ui.target(T("Meadowstead playfield"), { x: wx, y: wy, width: ww, height: wh }, { role: "label" });
   const f = frame();
   draw.box(0, 0, f.width, wy, "page");
   draw.box(0, wy + wh, f.width, f.height - wy - wh, "page");
@@ -591,8 +592,7 @@ function playScreen(L: Layout, inert: boolean): void {
   if (inert) return;
   playfieldOverlays(pf, L);
   if (!L.desktop && app.drawer) drawer(L);
-  tutorialBubble(L);
-  ui.target(T("Meadowstead playfield"), { x: pf.x, y: pf.y, width: pf.w, height: pf.h }, { role: "label" });
+  tutorialBubble(L, pf);
 }
 function sideColumn(key: string, anchor: "top-start" | "top-end", x: number, y: number, w: number, h: number, build: () => void, L: Layout): void {
   const natural = lastSize.get(key) ?? 0;
@@ -732,11 +732,16 @@ function playfieldOverlays(pf: { x: number; y: number; w: number; h: number }, L
       ui.row("caption-row", () => ui.style("caption-text").label(text), { style: "caption" }));
   }
 }
-function tutorialBubble(L: Layout): void {
+/** The Learn lesson's bubble (index.html #tutorial-bubble), over the field just above the tray and the plot
+ * mirror (on a landscape phone: at the field's top), so it covers no control. */
+function tutorialBubble(L: Layout, pf: { x: number; y: number; w: number; h: number }): void {
   const text = tutorialText();
-  if (!text || app.stack.length) return;
-  const w = Math.min(L.lw * 0.9, 480);
-  ui.place("tutorial-bubble", { anchor: "bottom", y: L.landscape ? 12 : 90 }, () => ui.id("tutorial-col").column(T("Tutorial"), () => {
+  if (!text || app.stack.length || app.drawer) return; // an open drawer is on top
+  const w = Math.min(L.lw * 0.9, 480, pf.w - 16);
+  const mirrorTop = pf.y + pf.h - 8 - Math.ceil((session.state?.plots.length ?? 12) / 4) * (L.portrait ? 43 : 48);
+  const at = L.landscape ? { anchor: "top-start" as const, x: pf.x + (pf.w - w) / 2, y: pf.y + 56 }
+    : { anchor: "bottom-start" as const, x: pf.x + (pf.w - w) / 2, y: L.lh - mirrorTop + 8 };
+  ui.place("tutorial-bubble", at, () => ui.id("tutorial-col").column(T("Tutorial"), () => {
     para(text, w - 42, "p", "tutorial-text");
     button({ id: "btn-tutorial-skip", text: T("Skip tutorial"), act: skipTutorial });
   }, { style: "bubble", width: w, spacing: 10, align: "center" }));

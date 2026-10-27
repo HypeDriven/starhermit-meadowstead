@@ -76,8 +76,10 @@ function learnSteps(touch) {
     else if (a.type === 'fulfill') {
       const o = state.orders.find((x) => x.id === a.orderId);
       const name = `Fulfill order for ${Object.entries(o.needs).map(([k, c]) => `${c}× ${NAMES[k]}`).join(', ')}, reward ${o.reward} coins`;
-      if (touch) out.push(['role', 'Open objective and orders panel'], ['wait', 600], ['role', name], ['wait', 600], ['role', 'Close panel']);
+      if (touch) out.push(['role', 'Open objective and orders panel'], ['wait', 600], ['role', name], ['wait', 600]);
       else out.push(['role', name]);
+      // The last order ends the lesson (no drawer to close then).
+      if (touch && state.ordersFulfilled + 1 < state.goalOrders) out.push(['role', 'Close panel']);
     } else {
       const t = a.type === 'plant' ? a.crop : a.type;
       if (touch) {
@@ -156,7 +158,7 @@ for (const v of views) {
     try {
       if (op === 'key') { await page.keyboard.down(a); await page.waitForTimeout(80); await page.keyboard.up(a); await page.waitForTimeout(80); }
       if (op === 'wait') await page.waitForTimeout(a);
-      if (op === 'role') await press(page.getByRole('button', { name: a, exact: true }));
+      if (op === 'role') await press(page.getByRole('button', { name: a, exact: true }).first());
       if (op === 'plot') await press(page.getByRole('button', { name: new RegExp(`^(Empty plot ${a + 1}|Plot ${a + 1}:)`) }).first());
       if (op === 'field' || op === 'drag') {
         const box = await page.getByText('Meadowstead playfield').first().boundingBox({ timeout: 5000 }).catch(() => null)
