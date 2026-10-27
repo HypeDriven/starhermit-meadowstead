@@ -12,9 +12,10 @@ const unq = (s) => s.replace(/\\'/g, "'").replace(/\\"/g, '"');
 
 /** Load the translation tables from a classic-script strings file. */
 export function loadTables(root, file, globalName) {
-  const sandbox = { self: {} };
+  const sandbox = {};
+  sandbox.globalThis = sandbox;
   vm.runInNewContext(readFileSync(new URL(file, root), 'utf8'), sandbox);
-  return sandbox.self[globalName];
+  return sandbox[globalName];
 }
 
 /** English keys used in code: T('…'), N('…') (deferred), and T(c ? '…' : '…'). */

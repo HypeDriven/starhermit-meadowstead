@@ -1,0 +1,92 @@
+# Menus at 960 × 540 (the compact layout): Help, Settings (palette, toggles),
+# Profile, the Practice setup with its difficulty, the right drawer's
+# Leaderboards and Friends (a local friend added by typing), Pause → Help → back.
+until 300 =▶ Play
+frames 20
+click =❓ Help
+until 60 How to play
+frames 10
+expect Scoring
+click =← Done
+until 60 =▶ Play
+frames 10
+click =⚙ Settings
+until 60 Color palette
+frames 10
+expect StarHermit Options
+click =Left-handed controls
+frames 3
+click =Captions
+frames 3
+click =Captions
+frames 3
+click =← Done
+until 60 =▶ Play
+frames 10
+click =👤 Profile
+until 60 Mastery track
+frames 10
+expect Local profile
+expect First Harvest
+click =← Done
+until 60 =▶ Play
+frames 10
+click =▶ Play
+until 60 Choose a mode
+frames 10
+click =Practice
+until 60 Difficulty
+frames 10
+expect Relaxed play with undo
+click =Start
+until 120 Time 0/90
+frames 20
+key Digit1 1
+frames 2
+key ArrowRight 1
+frames 2
+key Enter 1
+frames 3
+expect Time 1/90
+key KeyU 1
+frames 3
+expect Time 0/90
+click =Open inventory and actions panel
+frames 10
+expect Inventory
+click =Leaderboards
+until 60 Local board
+frames 10
+click =Daily
+frames 5
+expect No scores yet
+click =← Done
+until 60 Time 0/90
+frames 10
+click =Open inventory and actions panel
+frames 10
+click =Friends
+until 60 No friends added yet
+frames 10
+click Friend display name
+frames 5
+type Ann{Enter}
+frames 5
+expect Ann
+expect no scores
+click =← Done
+until 60 Time 0/90
+frames 10
+key KeyP 1
+until 60 Paused
+frames 10
+click =❓ Help
+until 60 How to play
+frames 10
+key Escape 1
+until 60 Paused
+frames 10
+click =▶ Resume
+until 60 Time 0/90
+frames 10
+save menus-play

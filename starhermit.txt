@@ -1,9 +1,27 @@
 name=Meadowstead
 description=Plant, water, harvest, craft, and deliver goods while making every turn count on a cozy homestead.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.18.0
+engine.minor=20
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard controls (players rebind keys and pads in the runtime's Options).
+# The arrows move the plot selection (wrapping), Enter uses the current tool
+# on it, 1–3 pick a seed, W water, H harvest (pressing a tool's key again puts
+# it down), Space waits a tick. Plots are also played with the pointer or
+# touch (tap a tool, then a plot; drag to orbit the camera), the plot mirror's
+# buttons, or Tab and Enter.
 control.left=ArrowLeft | Previous plot
 control.right=ArrowRight | Next plot
 control.up=ArrowUp | Plot above
@@ -20,3 +38,29 @@ control.pause=KeyP | Pause
 control.hint=Slash | Hint
 control.camera=KeyC | Reset camera
 control.back=Escape | Back / pause
+engine.group.left=Field
+engine.group.turnip=Tools
+engine.group.undo=Assists
+engine.group.pause=Game
+
+# Gamepad defaults: the D-pad or left stick moves the plot selection, South
+# uses the tool, the shoulders and left trigger pick turnip / carrot /
+# pumpkin seeds, North waters, West harvests, the right trigger waits, Select
+# undoes, the right stick press hints, the left stick press resets the
+# camera, Start pauses, East goes back (pauses during a round).
+engine.gamepad.left=DpadLeft+LeftStickLeft
+engine.gamepad.right=DpadRight+LeftStickRight
+engine.gamepad.up=DpadUp+LeftStickUp
+engine.gamepad.down=DpadDown+LeftStickDown
+engine.gamepad.activate=South
+engine.gamepad.turnip=LeftShoulder
+engine.gamepad.carrot=RightShoulder
+engine.gamepad.pumpkin=LeftTrigger
+engine.gamepad.water=North
+engine.gamepad.harvest=West
+engine.gamepad.wait=RightTrigger
+engine.gamepad.undo=Select
+engine.gamepad.hint=RightStickPress
+engine.gamepad.camera=LeftStickPress
+engine.gamepad.pause=Start
+engine.gamepad.back=East

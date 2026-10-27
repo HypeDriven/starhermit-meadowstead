@@ -9,23 +9,14 @@
   'use strict';
   var ROWS = [
     // ---- static markup: HUD, rails, tool tray
-    ['Skip to playfield', 'Saltar al campo de juego', 'Zum Spielfeld springen', 'Aller au terrain de jeu', 'Pular para o campo de jogo', 'Vai al campo di gioco'],
     ['Open objective and orders panel', 'Abrir el panel de objetivo y pedidos', 'Ziel- und Auftragsleiste öffnen', 'Ouvrir le panneau objectif et commandes', 'Abrir o painel de objetivo e pedidos', 'Apri il pannello obiettivo e ordini'],
     ['Open inventory and actions panel', 'Abrir el panel de inventario y acciones', 'Inventar- und Aktionsleiste öffnen', 'Ouvrir le panneau inventaire et actions', 'Abrir o painel de inventário e ações', 'Apri il pannello inventario e azioni'],
     ['Pause (P)', 'Pausa (P)', 'Pause (P)', 'Pause (P)', 'Pausar (P)', 'Pausa (P)'],
     ['⏸ Pause', '⏸ Pausa', '⏸ Pause', '⏸ Pause', '⏸ Pausar', '⏸ Pausa'],
     ['Objective and orders', 'Objetivo y pedidos', 'Ziel und Aufträge', 'Objectif et commandes', 'Objetivo e pedidos', 'Obiettivo e ordini'],
     ['Objective', 'Objetivo', 'Ziel', 'Objectif', 'Objetivo', 'Obiettivo'],
-    ['Fulfill orders to restore the homestead.', 'Entrega pedidos para restaurar la granja.', 'Erfülle Aufträge, um den Hof wiederherzustellen.', 'Livrez des commandes pour restaurer la ferme.', 'Entregue pedidos para restaurar o sítio.', 'Evadi gli ordini per restaurare la fattoria.'],
-    ['Order progress', 'Progreso de pedidos', 'Auftragsfortschritt', 'Progression des commandes', 'Progresso dos pedidos', 'Avanzamento ordini'],
     ['Orders', 'Pedidos', 'Aufträge', 'Commandes', 'Pedidos', 'Ordini'],
     ['Meadowstead playfield', 'Campo de juego de Meadowstead', 'Meadowstead-Spielfeld', 'Terrain de jeu de Meadowstead', 'Campo de jogo de Meadowstead', 'Campo di gioco di Meadowstead'],
-    ['3D rendering is unavailable in this browser. The full game remains playable with the field controls below.',
-      'El renderizado 3D no está disponible en este navegador. El juego completo se puede jugar con los controles del campo que hay abajo.',
-      '3D-Darstellung ist in diesem Browser nicht verfügbar. Das ganze Spiel bleibt mit den Feldsteuerungen unten spielbar.',
-      'Le rendu 3D n’est pas disponible dans ce navigateur. Le jeu complet reste jouable avec les commandes du champ ci-dessous.',
-      'A renderização 3D não está disponível neste navegador. O jogo completo continua jogável com os controles do campo abaixo.',
-      'Il rendering 3D non è disponibile in questo browser. Il gioco completo resta giocabile con i comandi del campo qui sotto.'],
     ['Farm plots', 'Parcelas de la granja', 'Beete des Hofs', 'Parcelles de la ferme', 'Canteiros do sítio', 'Aiuole della fattoria'],
     ['Inventory and actions', 'Inventario y acciones', 'Inventar und Aktionen', 'Inventaire et actions', 'Inventário e ações', 'Inventario e azioni'],
     ['Inventory', 'Inventario', 'Inventar', 'Inventaire', 'Inventário', 'Inventario'],
@@ -97,8 +88,6 @@
     ['Continue', 'Continuar', 'Weiter', 'Continuer', 'Continuar', 'Continua'],
     ['Tutorial', 'Tutorial', 'Anleitung', 'Tutoriel', 'Tutorial', 'Tutorial'],
     ['Skip tutorial', 'Saltar el tutorial', 'Anleitung überspringen', 'Passer le tutoriel', 'Pular o tutorial', 'Salta il tutorial'],
-    ['Loading', 'Cargando', 'Wird geladen', 'Chargement', 'Carregando', 'Caricamento'],
-    ['Meadowstead is loading…', 'Meadowstead se está cargando…', 'Meadowstead wird geladen …', 'Meadowstead se charge…', 'Meadowstead está carregando…', 'Meadowstead si sta caricando…'],
 
     // ---- items, seasons, modes
     ['Turnip', 'Nabo', 'Rübe', 'Navet', 'Nabo', 'Rapa'],
@@ -212,22 +201,13 @@
     ['Fixed seed score chase. <b>Ranked</b> on the global board.', 'Caza de puntos con semilla fija. <b>Clasificatoria</b> en la tabla global.', 'Punktejagd mit festem Seed. <b>Gewertet</b> in der globalen Liste.', 'Course au score sur graine fixe. <b>Classée</b> au classement mondial.', 'Caça aos pontos com semente fixa. <b>Ranqueada</b> no ranking global.', 'Caccia al punteggio con seme fisso. <b>In classifica</b> globale.'],
 
     // ---- settings
-    ['Music volume', 'Volumen de la música', 'Musiklautstärke', 'Volume de la musique', 'Volume da música', 'Volume della musica'],
-    ['Effects volume', 'Volumen de los efectos', 'Effektlautstärke', 'Volume des effets', 'Volume dos efeitos', 'Volume degli effetti'],
-    ['Ambience volume', 'Volumen del ambiente', 'Umgebungslautstärke', 'Volume de l’ambiance', 'Volume do ambiente', 'Volume dell’ambiente'],
-    ['Voice volume', 'Volumen de la voz', 'Sprachlautstärke', 'Volume de la voix', 'Volume da voz', 'Volume della voce'],
-    ['Mute all', 'Silenciar todo', 'Alles stumm', 'Tout couper', 'Silenciar tudo', 'Silenzia tutto'],
-    ['Reduced motion', 'Movimiento reducido', 'Weniger Bewegung', 'Animations réduites', 'Movimento reduzido', 'Movimento ridotto'],
     ['High contrast', 'Alto contraste', 'Hoher Kontrast', 'Contraste élevé', 'Alto contraste', 'Contrasto elevato'],
     ['Color palette', 'Paleta de colores', 'Farbpalette', 'Palette de couleurs', 'Paleta de cores', 'Tavolozza dei colori'],
     ['Default', 'Predeterminada', 'Standard', 'Par défaut', 'Padrão', 'Predefinita'],
     ['Deuteranopia', 'Deuteranopía', 'Deuteranopie', 'Deutéranopie', 'Deuteranopia', 'Deuteranopia'],
     ['Protanopia', 'Protanopía', 'Protanopie', 'Protanopie', 'Protanopia', 'Protanopia'],
     ['Tritanopia', 'Tritanopía', 'Tritanopie', 'Tritanopie', 'Tritanopia', 'Tritanopia'],
-    ['Larger text', 'Texto más grande', 'Größerer Text', 'Texte plus grand', 'Texto maior', 'Testo più grande'],
     ['Left-handed controls', 'Controles para zurdos', 'Linkshänder-Steuerung', 'Commandes pour gauchers', 'Controles para canhotos', 'Comandi per mancini'],
-    ['Hold to confirm', 'Mantener para confirmar', 'Zum Bestätigen halten', 'Maintenir pour confirmer', 'Segurar para confirmar', 'Tieni premuto per confermare'],
-    ['Timing assistance', 'Ayuda de tiempo', 'Zeithilfe', 'Aide au rythme', 'Ajuda de tempo', 'Aiuto sui tempi'],
     ['Haptics', 'Vibración', 'Haptik', 'Vibrations', 'Vibração', 'Vibrazione'],
     ['Captions', 'Subtítulos', 'Untertitel', 'Sous-titres', 'Legendas', 'Sottotitoli'],
     ['Replay tutorial', 'Repetir el tutorial', 'Anleitung wiederholen', 'Revoir le tutoriel', 'Repetir o tutorial', 'Ripeti il tutorial'],
@@ -262,7 +242,6 @@
     ['Local board (this device).', 'Tabla local (este dispositivo).', 'Lokale Liste (dieses Gerät).', 'Classement local (cet appareil).', 'Ranking local (este dispositivo).', 'Classifica locale (questo dispositivo).'],
     ['No scores yet — be the first!', 'Aún no hay puntuaciones: ¡sé el primero!', 'Noch keine Punkte – sei der Erste!', 'Pas encore de score — soyez le premier !', 'Ainda sem pontuações — seja o primeiro!', 'Ancora nessun punteggio: sii il primo!'],
     ['Player', 'Jugador', 'Spieler', 'Joueur', 'Jogador', 'Giocatore'],
-    ['Player {id}', 'Jugador {id}', 'Spieler {id}', 'Joueur {id}', 'Jogador {id}', 'Giocatore {id}'],
     ['You', 'Tú', 'Du', 'Vous', 'Você', 'Tu'],
     ['No friends on the platform yet. Use Invite a friend to send a link.', 'Aún no tienes amigos en la plataforma. Usa Invitar a un amigo para enviar un enlace.', 'Noch keine Freunde auf der Plattform. Mit „Freund einladen“ schickst du einen Link.', 'Pas encore d’amis sur la plateforme. Utilisez Inviter un ami pour envoyer un lien.', 'Ainda sem amigos na plataforma. Use Convidar um amigo para enviar um link.', 'Ancora nessun amico sulla piattaforma. Usa Invita un amico per inviare un link.'],
     ['{n} pts', '{n} pts', '{n} Pkt.', '{n} pts', '{n} pts', '{n} pt'],
@@ -296,7 +275,17 @@
     ['session complete', 'sesión completada', 'Sitzung abgeschlossen', 'session terminée', 'sessão concluída', 'sessione completata'],
     ['the season turns', 'cambia la estación', 'die Jahreszeit wechselt', 'la saison change', 'a estação muda', 'cambia la stagione'],
     ['action undone', 'acción deshecha', 'Aktion rückgängig gemacht', 'action annulée', 'ação desfeita', 'azione annullata'],
-    ['achievement unlocked', 'logro desbloqueado', 'Erfolg freigeschaltet', 'succès débloqué', 'conquista desbloqueada', 'obiettivo sbloccato']
+    ['achievement unlocked', 'logro desbloqueado', 'Erfolg freigeschaltet', 'succès débloqué', 'conquista desbloqueada', 'obiettivo sbloccato'],
+    // ---- engine client (native/*.ts): the runtime's Options, the drawer scrim
+    ['Sound, graphics, language, reduced motion, high contrast and larger text are in the StarHermit Options.',
+      'El sonido, los gráficos, el idioma, el movimiento reducido, el alto contraste y el texto más grande están en las Opciones de StarHermit.',
+      'Ton, Grafik, Sprache, reduzierte Bewegung, hoher Kontrast und größere Schrift findest du in den StarHermit-Optionen.',
+      'Le son, les graphismes, la langue, les animations réduites, le contraste élevé et le texte agrandi se trouvent dans les Options de StarHermit.',
+      'Som, gráficos, idioma, movimento reduzido, alto contraste e texto maior ficam nas Opções do StarHermit.',
+      'Audio, grafica, lingua, movimento ridotto, contrasto elevato e testo più grande si trovano nelle Opzioni di StarHermit.'],
+    ['Audio & graphics', 'Audio y gráficos', 'Audio & Grafik', 'Audio et graphismes', 'Áudio e gráficos', 'Audio e grafica'],
+    ['Keyboard bindings', 'Asignación de teclas', 'Tastenbelegung', 'Raccourcis clavier', 'Atalhos do teclado', 'Assegnazione tasti'],
+    ['Close panel', 'Cerrar panel', 'Leiste schließen', 'Fermer le panneau', 'Fechar painel', 'Chiudi pannello'],
   ];
 
   var COLS = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
@@ -306,7 +295,6 @@
 
   // en-GB: British spellings (fulfil, colour).
   T['en-GB'] = {
-    'Fulfill orders to restore the homestead.': 'Fulfil orders to restore the homestead.',
     'Fulfill': 'Fulfil',
     'Fulfill order for {needs}, reward {reward} coins': 'Fulfil order for {needs}, reward {reward} coins',
     'Fulfill {goal} orders before time runs out ({done}/{goal}).': 'Fulfil {goal} orders before time runs out ({done}/{goal}).',
@@ -352,4 +340,4 @@
   };
 
   root.MS_STRINGS = T;
-})(typeof self !== 'undefined' ? self : this);
+})(globalThis);
