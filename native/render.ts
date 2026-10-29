@@ -10,12 +10,11 @@
 // (drag to orbit within bounds, C resets). Rendering reads rules state and never
 // writes it.
 //
-// From three.js: light intensities are r185's ÷ π (the engine's convention);
-// RoomEnvironment(renderer) + PMREM give the reflections at the old
+// From three.js r185 (engine.minor 26): light intensities and shadow box as the page set them;
+// RoomEnvironment(renderer), lowered as r183+, + PMREM give the reflections at the old
 // environmentIntensity 0.28; the post chain (GTAO, UnrealBloom threshold 0.92,
 // the GradeShader in display space, FXAA / SMAA / MSAA) is renderer.ao / bloom /
-// grade / antialias; the fitted orthographic shadow box is the engine's
-// `shadow.distance`; the procedural meadow and ripple textures are baked
+// grade / antialias; the procedural meadow and ripple textures are baked
 // (tools/bake-textures.mjs). The playfield sits between the HUD, rails and tray
 // as the old <canvas> did: the camera keeps the playfield's aspect and is
 // offset into its rectangle with setViewOffset, so picking takes window
@@ -25,7 +24,7 @@ import {
   ACESFilmicToneMapping, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, ConeGeometry,
   CylinderGeometry, DirectionalLight, DodecahedronGeometry, DoubleSide, Euler, Fog, Group, HemisphereLight, IcosahedronGeometry,
   InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera,
-  PlaneGeometry, PMREMGenerator, Points, PointsMaterial, Quaternion, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment,
+  OrthographicCamera, PlaneGeometry, PMREMGenerator, Points, PointsMaterial, Quaternion, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment,
   SphereGeometry, SRGBColorSpace, TextureLoader, Vector2, Vector3, renderer, scene,
   type Material, type Object3D, type Texture,
 } from "starhermit:scene";
@@ -71,14 +70,18 @@ function decoRand(i: number): number {
 }
 
 // -- lights: one dominant warm key (PCF shadows fitted to the homestead) + hemisphere sky/grass fill --------------
-const keyLight = new DirectionalLight(0xfff3e0, 2.4 / PI);
+const keyLight = new DirectionalLight(0xfff3e0, 2.4);
 keyLight.position.set(8, 14, 6);
 keyLight.shadow.mapSize = 1024;
 keyLight.shadow.bias = -0.0004;
 keyLight.shadow.normalBias = 0.03;
-keyLight.shadow.distance = 36;
+{
+  const sc = keyLight.shadow.camera as OrthographicCamera;
+  sc.left = -12.5; sc.right = 12.5; sc.top = 10.5; sc.bottom = -10.5; sc.near = 4; sc.far = 36;
+  sc.updateProjectionMatrix();
+}
 scene.add(keyLight, keyLight.target);
-const hemi = new HemisphereLight(0xcfe8ff, 0x5a7a4a, 0.9 / PI);
+const hemi = new HemisphereLight(0xcfe8ff, 0x5a7a4a, 0.9);
 scene.add(hemi);
 
 // -- textures -----------------------------------------------------------------------------------
@@ -610,12 +613,16 @@ let envMap: Texture | null = null;
 function applyEnvironment(): void {
   const on = !!look?.reflections;
   if (on && !envMap) {
-    try { envMap = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(renderer), 0.04).texture; }
+    try {
+      const room = new RoomEnvironment(renderer);
+      room.position.y = -3.5; // three.js r183+ lowers the room
+      envMap = new PMREMGenerator(renderer).fromScene(room, 0.04).texture;
+    }
     catch (e) { console.warn(`environment: ${e instanceof Error ? e.message : String(e)}`); }
   }
   scene.environment = on ? envMap : null;
   scene.environmentIntensity = 0.28;
-  hemi.intensity = (on && envMap ? 0.7 : 0.9) / PI;
+  hemi.intensity = on && envMap ? 0.7 : 0.9;
 }
 /** The graphics level's look (quality.ts): post effects, shadows, shading model, textures, detail and budgets. */
 export function applyLook(next: Look): void {
