@@ -16,7 +16,7 @@ same decision.
 | Genre | Turn-based resource puzzle / cozy farm management |
 | Players | 1 (asynchronous competition via shared seeds and leaderboards) |
 | Session length | 2–6 minutes (Journey stage), 6–10 minutes (Daily, Score Chase) |
-| Platforms | StarHermit engine script game (engine 1.29.0, `engine.minor=31`): natively in the StarHermit client, in browsers through the engine's web runtime; keyboard, mouse, touch and gamepad |
+| Platforms | StarHermit engine script game (engine 1.30.0, `engine.minor=32`): natively in the StarHermit client, in browsers through the engine's web runtime; keyboard, mouse, touch and gamepad |
 | Rendering | `starhermit:scene` (the old three.js scene, ported) behind a `starhermit:ui` HUD, plus an accessible plot mirror that plays the whole game |
 | Persistence | The game's save (`starhermit:storage` `saves`: on the device and in the player's cloud slot), engine settings for the game's options |
 
@@ -24,7 +24,7 @@ same decision.
 
 | Path | Role |
 |---|---|
-| `starhermit.txt` | Manifest: entry `native/main.ts`, engine 1.29.0 / minor 31, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` |
+| `starhermit.txt` | Manifest: entry `native/main.ts`, engine 1.30.0 / minor 32, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` |
 | `native/main.ts` | Entry: session (commands, undo, replay log and envelope, snapshot, tutorial, achievements, journey/daily progress, local board, leaderboard post), screen stack, input |
 | `native/screens.ts` | Every screen and the play layout (status bar, rails or drawers, tool tray, plot mirror, banners) |
 | `native/render.ts` | The homestead scene, camera fitted into the playfield, picking |
