@@ -637,9 +637,8 @@ export function applyLook(next: Look): void {
   renderer.bloom = next.bloom ? { strength: 0.4, radius: 0.4, threshold: 0.92, resolution: b.bloomRes } : null;
   // render.js GradeShader (display space, after the output): a gentle S-curve that adds contrast, +7 % saturation,
   // warm highlights / cool shadows, the 0.2 vignette.
-  // The 0.18 S-curve blend is a 0.09 slope about 0.5 (display contrast is the slope less one).
   renderer.grade = next.grade ? {
-    space: "display", contrast: 0.09, saturation: 1.07,
+    space: "display", contrastCurve: "s", contrast: 0.18, saturation: 1.07,
     shadows: [0.97, 0.99, 1.04], highlights: [1.035, 1.0, 0.965], split: [0.2, 0.8],
     vignette: { amount: 0.2, inner: 0.38, outer: 0.85, scale: [1, 1] },
   } : null;
