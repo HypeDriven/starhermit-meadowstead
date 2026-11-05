@@ -16,7 +16,7 @@ same decision.
 | Genre | Turn-based resource puzzle / cozy farm management |
 | Players | 1 (asynchronous competition via shared seeds and leaderboards) |
 | Session length | 2–6 minutes (Journey stage), 6–10 minutes (Daily, Score Chase) |
-| Platforms | StarHermit engine script game (engine 1.36.1, `engine.minor=32`): natively in the StarHermit client, in browsers through the engine's web runtime; keyboard, mouse, touch and gamepad |
+| Platforms | StarHermit engine script game (engine 1.36.2, `engine.minor=32`): natively in the StarHermit client, in browsers through the engine's web runtime; keyboard, mouse, touch and gamepad |
 | Rendering | `starhermit:scene` (the old three.js scene, ported) behind a `starhermit:ui` HUD, plus an accessible plot mirror that plays the whole game |
 | Persistence | The game's save (`starhermit:storage` `saves`: on the device and in the player's cloud slot), engine settings for the game's options |
 
@@ -24,7 +24,7 @@ same decision.
 
 | Path | Role |
 |---|---|
-| `starhermit.txt` | Manifest: entry `native/main.ts`, engine 1.36.1 / minor 32, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` |
+| `starhermit.txt` | Manifest: entry `native/main.ts`, engine 1.36.2 / minor 32, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` |
 | `native/main.ts` | Entry: session (commands, undo, replay log and envelope, snapshot, tutorial, achievements, journey/daily progress, local board, leaderboard post), screen stack, input |
 | `native/screens.ts` | Every screen and the play layout (status bar, rails or drawers, tool tray, plot mirror, banners) |
 | `native/render.ts` | The homestead scene, camera fitted into the playfield, picking |
@@ -285,7 +285,7 @@ crops per stage (sprout cones, leafy stems, clear-coated bulbs and pumpkins) wit
 blooms, selection/hover rings, the ghost disc, burst specks and pollen motes. Lights, the shadow box and the RoomEnvironment (lowered as r183+) are the page's own.
 
 **Graphics levels.** The engine-owned effects (shadows and their map size, AO, bloom, the grade, anti-aliasing)
-are the level's own (`levelSettings()`); Low keeps MSAA where the level asks for none (engine 1.36.1 draws fog
+are the level's own (`levelSettings()`); Low keeps MSAA where the level asks for none (engine 1.36.2 draws fog
 and translucent overlays off-colour without anti-aliasing). The level's quality tier (Options › Graphics) picks
 the old art presets (`native/quality.ts`); at each tier's anchor level (quantum, molecular, terrestrial,
 galactic) the look is: Low — Lambert shading, no shadows, MSAA, plain scenery; Balanced — Standard shading,
