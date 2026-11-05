@@ -69,13 +69,9 @@ function button(b: Btn, width: number | null = null): boolean {
 }
 /** Buttons at their own widths in rows that wrap at `width` (CSS flex-wrap, centred). */
 function flow(label: string, list: Btn[], width: number, gap = 10): void {
-  const rows = wrapRows(list.map((b) => Math.min(width, btnW(b))), width, gap);
-  let k = 0;
-  ui.column(label, () => {
-    rows.forEach((n, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (let i = 0; i < n; i++, k++) { const b = list[k]!; button(b, btnW(b) > width ? width : null); }
-    }, { spacing: gap, align: "center" }));
-  }, { spacing: gap, align: "center", width });
+  ui.row(label, () => {
+    for (const b of list) button(b, btnW(b) > width ? width : null);
+  }, { wrap: true, width, gap, justify: "center", align: "center" });
 }
 /** How many items go on each row when items of `widths` wrap at `max`. */
 function wrapRows(widths: number[], max: number, gap: number): number[] {

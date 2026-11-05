@@ -12,7 +12,7 @@
 // and drags on the 3D field, and the accessible plot mirror's buttons.
 import "./i18n.ts";
 import {
-  clipboard, frame, onPreferencesChange, onQuit, onRender, onResume, onStart, onSuspend, onUpdate, preferences,
+  clipboard, frame, levelSettings, onPreferencesChange, onQuit, onRender, onResume, onStart, onSuspend, onUpdate, preferences,
 } from "starhermit:engine";
 import { bindings, onAction, onPointerButton, onPointerMove, onTouch, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
@@ -663,10 +663,10 @@ function fieldInput(): void {
 let lookKey = "";
 function applyLook(): void {
   const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
+  const k = f.level;
   if (k === lookKey) return;
   lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  render.applyLook(lookFor(levelSettings(f.level)));
 }
 audio.onCaption((text) => { if (options.captions) app.caption = { text, until: now() + 2 }; });
 

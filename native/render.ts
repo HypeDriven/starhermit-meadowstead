@@ -14,7 +14,8 @@
 // RoomEnvironment(renderer), lowered as r183+, + PMREM give the reflections at the old
 // environmentIntensity 0.28; the post chain (GTAO, UnrealBloom threshold 0.92,
 // the GradeShader in display space, FXAA / SMAA / MSAA) is renderer.ao / bloom /
-// grade / antialias; the procedural meadow and ripple textures are baked
+// grade / antialias, each on and sized by the graphics level; the procedural
+// meadow and ripple textures are baked
 // (tools/bake-textures.mjs). The playfield sits between the HUD, rails and tray
 // as the old <canvas> did: the camera keeps the playfield's aspect and is
 // offset into its rectangle with setViewOffset, so picking takes window
@@ -629,12 +630,14 @@ export function applyLook(next: Look): void {
   if (look && JSON.stringify(look) === JSON.stringify(next)) return;
   look = next;
   const b = next.budget;
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.7, radius: 0.6, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: next.ao === "high" ? 16 : 8, resolution: b.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: next.ao === "high" ? 6 : 4, rings: 2, samples: next.ao === "high" ? 16 : 8, radiusExponent: 2 },
+  // The level's AO; full resolution is the engine's "high" (the old Ultra's wider denoise).
+  const ao = next.ao, full = !!ao && ao.resolution >= 1;
+  renderer.ao = ao && {
+    blendIntensity: 0.7, radius: 0.6, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: full ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // High threshold: only ready-crop halos, cottage windows, pollen and water glints bloom.
-  renderer.bloom = next.bloom ? { strength: 0.4, radius: 0.4, threshold: 0.92, resolution: b.bloomRes } : null;
+  renderer.bloom = next.bloom === null ? null : { strength: 0.4, radius: 0.4, threshold: 0.92, resolution: next.bloom };
   // render.js GradeShader (display space, after the output): a gentle S-curve that adds contrast, +7 % saturation,
   // warm highlights / cool shadows, the 0.2 vignette.
   renderer.grade = next.grade ? {
@@ -646,6 +649,7 @@ export function applyLook(next: Look): void {
   const on = next.shadows > 0;
   renderer.shadowMap.enabled = on;
   keyLight.castShadow = on;
+  // The level's map size: at engine.minor ≥ 23 the engine keeps whatever the game sets.
   if (on) keyLight.shadow.mapSize = next.shadows;
   // Scenery detail: meadow texture, tufts/flowers/stones/trim, bed frames, the rippled pond.
   detailGroup.visible = next.detailed;

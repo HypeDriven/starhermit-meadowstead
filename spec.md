@@ -284,11 +284,14 @@ grass tufts, wildflowers and pond stones, timber bed frames, the authored soil t
 crops per stage (sprout cones, leafy stems, clear-coated bulbs and pumpkins) with a bright ready ring that
 blooms, selection/hover rings, the ghost disc, burst specks and pollen motes. Lights, the shadow box and the RoomEnvironment (lowered as r183+) are the page's own.
 
-**Graphics levels.** The runtime's quality tier (Options › Graphics) picks the old preset table
-(`native/quality.ts`): Low — Lambert shading, no shadows, MSAA, plain scenery; Balanced — Standard shading,
+**Graphics levels.** The engine-owned effects (shadows and their map size, AO, bloom, the grade, anti-aliasing)
+are the level's own (`levelSettings()`); Low keeps MSAA where the level asks for none (engine 1.36.1 draws fog
+and translucent overlays off-colour without anti-aliasing). The level's quality tier (Options › Graphics) picks
+the old art presets (`native/quality.ts`); at each tier's anchor level (quantum, molecular, terrestrial,
+galactic) the look is: Low — Lambert shading, no shadows, MSAA, plain scenery; Balanced — Standard shading,
 1024 shadows, bloom, grade, FXAA, reflections (RoomEnvironment, intensity 0.28), scenery detail; High —
 physical (clear-coat) shading, 2048 shadows, GTAO, SMAA, pollen motes; Ultra — 4096 shadows, high GTAO,
-full-resolution bloom and AO, MSAA. Tuft and mote budgets grow within a tier with the level (≤ 2×). The
+full-resolution bloom and AO, MSAA. Tuft and mote budgets grow within a tier with the level's particle budget over the anchor's (≤ 2×). The
 meadow luminance texture and the ripple normal map are baked per budget (`tools/bake-textures.mjs`, from
 the old canvas painters). Render scale, adaptive resolution, frame-rate limit and FPS readout are the
 runtime's. The camera keeps the playfield's aspect (widening the field of view below 0.85) and is offset into

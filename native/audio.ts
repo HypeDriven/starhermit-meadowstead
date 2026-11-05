@@ -13,8 +13,10 @@
 // (createClip): a live synthesis graph makes clip loads fail on the engine's
 // web runtime. The synthesized stand-ins the browser build played while a
 // sample decoded are not ported, so a sample still loading is silent (its
-// caption still shows). Clips load once the mixer runs (natively at once, in a
-// browser after the first press), one at a time; rendered clips one a frame.
+// caption still shows). Every sample loads at once in onStart (the engine hands
+// each loaded clip to the mixer, natively and in a browser); the rendered clips,
+// one a frame, and the music and ambience wait for the mixer to run (in a
+// browser, the first press).
 import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 
 const LEVEL = { music: 0.5, effects: 0.8, ambience: 0.4 };
@@ -32,9 +34,6 @@ export const CAPTIONS: Record<string, string> = {
 };
 
 const clips = new Map<string, AudioClip>();
-const queue: string[] = [];
-let loading = false;
-let wantClips = false;
 let suspended = false;
 let seed = "audio";
 let variantCalls = 0;
@@ -53,15 +52,12 @@ export function onCaption(fn: (text: string) => void): void { captionFn = fn; }
 /** audio.js setSeed: a session's seed drives the variants, the music and the chirps. */
 export function setSeed(s: string): void { seed = String(s); }
 
-function load(name: string): void { if (!queue.includes(name) && !clips.has(name)) queue.push(name); }
-function pump(): void {
-  if (loading || !queue.length) return;
-  const name = queue.shift()!;
-  loading = true;
-  loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => { console.warn(`sfx ${name}: ${String(e)}`); loading = false; });
+/** Loads every sample at once (onStart); a cue whose sample is still loading is silent. */
+export function loadSfx(): void {
+  for (const name of new Set(Object.values(SFX).flat())) {
+    loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
+  }
 }
-/** Asks for the clips; they load once the mixer runs (see update). */
-export function loadSfx(): void { wantClips = true; }
 
 /** A game event's sample (once loaded) and its caption. */
 export function sfx(event: string): void {
@@ -74,7 +70,7 @@ export function sfx(event: string): void {
   if (!clip) return;
   const bus: Bus = event === "click" ? "interface" : "effects";
   try { playClip(clip, { bus, gain: LEVEL.effects }); }
-  catch { clips.delete(file); load(file); } // a clip the mixer lost: load it again
+  catch { /* the mixer is full this frame: skip it */ }
 }
 
 // -- rendered clips -------------------------------------------------------------------
@@ -133,17 +129,10 @@ export function start(): void { started = true; }
 /** A hidden window: the music and ambience hold (audio.js stopped its timers). */
 export function setSuspended(on: boolean): void { suspended = on; }
 
-/** Each frame: the samples once the mixer runs (one at a time), the rendered clips one a frame after them, then
- * the wind by state and the music's and chirps' next steps by mixer time. */
+/** Each frame once the mixer runs: the rendered clips one a frame, then the wind by state and the music's and
+ * chirps' next steps by mixer time. */
 export function update(): void {
   if (context.state !== "running") return;
-  if (wantClips) {
-    wantClips = false;
-    for (const names of Object.values(SFX)) for (const n of names) load(n);
-    return;
-  }
-  pump();
-  if (loading || queue.length) return;
   if (!wind) { wind = windClip(); return; }
   if (!chirp) { chirp = toneClip(CHIRP_BASE, 0.09, 0.05, CHIRP_BASE * 1.3); return; }
   for (const f of SCALE) if (!plucks.has(f)) { plucks.set(f, toneClip(f, 0.5, 0.05)); return; }
