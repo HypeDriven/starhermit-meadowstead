@@ -9,15 +9,13 @@
 // the volumes, the mute and the voice limit): music → "music", effects and
 // ambience → "effects", the menu click → "interface"; the old default bus
 // levels (music 50 %, effects 80 %, ambience 40 %) are folded into each sound's
-// gain. The plucks, the wind and the chirp are rendered into clips once
-// (createClip): a live synthesis graph makes clip loads fail on the engine's
-// web runtime. The synthesized stand-ins the browser build played while a
+// gain. The plucks, the wind and the chirp are rendered offline into clips once
+// at start (OfflineAudioContext). The synthesized stand-ins the browser build played while a
 // sample decoded are not ported, so a sample still loading is silent (its
 // caption still shows). Every sample loads at once in onStart (the engine hands
-// each loaded clip to the mixer, natively and in a browser); the rendered clips,
-// one a frame, and the music and ambience wait for the mixer to run (in a
+// each loaded clip to the mixer, natively and in a browser); the music and ambience wait for the mixer to run (in a
 // browser, the first press).
-import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
+import { context, createClip, loadClip, OfflineAudioContext, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 
 const LEVEL = { music: 0.5, effects: 0.8, ambience: 0.4 };
 /** audio.js SAMPLE_MAP. */
@@ -52,11 +50,12 @@ export function onCaption(fn: (text: string) => void): void { captionFn = fn; }
 /** audio.js setSeed: a session's seed drives the variants, the music and the chirps. */
 export function setSeed(s: string): void { seed = String(s); }
 
-/** Loads every sample at once (onStart); a cue whose sample is still loading is silent. */
+/** Loads every sample and renders the synthesized clips at once (onStart); a cue whose sample is still loading is silent. */
 export function loadSfx(): void {
   for (const name of new Set(Object.values(SFX).flat())) {
     loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
   }
+  renderClips();
 }
 
 /** A game event's sample (once loaded) and its caption. */
@@ -76,38 +75,37 @@ export function sfx(event: string): void {
 // -- rendered clips -------------------------------------------------------------------
 const RATE = 22050;
 /** audio.js tone(bus, f, dur, 'sine', gain[, slideTo]): gain then an exponential ramp to 0.0001 over dur. */
-function toneClip(freq: number, dur: number, gain: number, slideTo?: number): AudioClip {
-  const n = Math.round((dur + 0.02) * RATE);
-  const out = new Float32Array(n);
-  let phase = 0;
-  for (let i = 0; i < n; i++) {
-    const t = Math.min(dur, i / RATE);
-    const f = slideTo ? freq * Math.pow(slideTo / freq, t / dur) : freq;
-    phase += 2 * Math.PI * f / RATE;
-    out[i] = Math.sin(phase) * gain * Math.pow(0.0001 / gain, t / dur);
-  }
-  return createClip([out], RATE);
+async function toneClip(freq: number, dur: number, gain: number, slideTo?: number): Promise<AudioClip> {
+  const off = new OfflineAudioContext(1, Math.round((dur + 0.02) * RATE), RATE);
+  const osc = off.createOscillator();
+  osc.frequency.setValueAtTime(freq, 0);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, dur);
+  const g = off.createGain();
+  g.gain.setValueAtTime(gain, 0);
+  g.gain.exponentialRampToValueAtTime(0.0001, dur);
+  osc.connect(g).connect(off.destination);
+  osc.start();
+  return createClip(await off.startRendering());
 }
-/** audio.js startAmbience: two seconds of leaky-integrated noise (×4) through a 400 Hz low-pass at gain 0.5, looped. */
-function windClip(): AudioClip {
-  const n = 2 * RATE;
-  let s = fnv("meadow-wind");
-  const rnd = (): number => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
-  const a = 1 - Math.exp(-2 * Math.PI * 400 / RATE);
-  const noise = new Float32Array(n);
-  let v = 0;
-  for (let i = 0; i < n; i++) { v = v * 0.98 + (rnd() * 2 - 1) * 0.02; noise[i] = v * 4; }
-  const out = new Float32Array(n);
-  let y = 0, y2 = 0;
-  // Two passes of a two-pole low-pass (the biquad's stand-in), warmed over the loop once so the seam is quiet.
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < n; i++) {
-      y += a * (noise[i]! - y);
-      y2 += a * (y - y2);
-      if (pass === 1) out[i] = y2 * 0.5;
-    }
-  }
-  return createClip([out], RATE);
+/** audio.js startAmbience: two seconds of noise, darkened (the old leaky integrator, about 71 Hz), through a 400 Hz
+ * low-pass, looped; periodic once the filters settle. WIND_GAIN: the old stem's level, measured. */
+const WIND_GAIN = 1.64;
+async function windClip(): Promise<AudioClip> {
+  const n = 2 * RATE, settle = Math.round(0.25 * RATE);
+  const off = new OfflineAudioContext(1, settle + n, RATE);
+  const noise = off.createNoise({ seed: fnv("meadow-wind"), seconds: 2 });
+  const dark = off.createBiquadFilter();
+  dark.type = "lowpass";
+  dark.frequency.value = 71;
+  const lp = off.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 400;
+  const g = off.createGain();
+  g.gain.value = WIND_GAIN;
+  noise.connect(dark).connect(lp).connect(g).connect(off.destination);
+  noise.start();
+  const r = await off.startRendering();
+  return createClip([r.getChannelData(0).slice(settle)], RATE);
 }
 
 // -- music and ambience -------------------------------------------------------------------
@@ -124,19 +122,24 @@ let nextStep = 0;
 let chirpCount = 0;
 let nextChirp = 0;
 
+/** Renders the plucks, the wind and the chirp, one context a clip (14, under the 16 at once). */
+function renderClips(): void {
+  const warn = (e: unknown): void => console.warn(`audio: ${String(e)}`);
+  windClip().then((c) => { wind = c; }, warn);
+  toneClip(CHIRP_BASE, 0.09, 0.05, CHIRP_BASE * 1.3).then((c) => { chirp = c; }, warn);
+  for (const f of SCALE) toneClip(f, 0.5, 0.05).then((c) => { plucks.set(f, c); }, warn);
+  for (const f of SCALE.slice(0, 4)) toneClip(f / 2, 1.2, 0.04).then((c) => { lows.set(f, c); }, warn);
+}
+
 /** audio.js resume(): ambience and music run from the first press on (and from boot natively). */
 export function start(): void { started = true; }
 /** A hidden window: the music and ambience hold (audio.js stopped its timers). */
 export function setSuspended(on: boolean): void { suspended = on; }
 
-/** Each frame once the mixer runs: the rendered clips one a frame, then the wind by state and the music's and
+/** Each frame once the mixer runs and the clips are rendered: the wind by state and the music's and
  * chirps' next steps by mixer time. */
 export function update(): void {
-  if (context.state !== "running") return;
-  if (!wind) { wind = windClip(); return; }
-  if (!chirp) { chirp = toneClip(CHIRP_BASE, 0.09, 0.05, CHIRP_BASE * 1.3); return; }
-  for (const f of SCALE) if (!plucks.has(f)) { plucks.set(f, toneClip(f, 0.5, 0.05)); return; }
-  for (const f of SCALE.slice(0, 4)) if (!lows.has(f)) { lows.set(f, toneClip(f / 2, 1.2, 0.04)); return; }
+  if (context.state !== "running" || !wind || !chirp || plucks.size < SCALE.length || lows.size < 4) return;
   try {
     const want = started && !suspended;
     if (want && !windSound) windSound = playClip(wind, { bus: "effects", gain: LEVEL.ambience, loop: true });

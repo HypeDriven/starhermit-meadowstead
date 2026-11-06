@@ -1,10 +1,9 @@
-// The browser build's pure scripts, shared with the Node tests and the dev
-// server.js: the deterministic rules (js/rules.js, UMD) and the string tables
-// with their lookup (js/strings.js, js/i18n.js), evaluated as classic scripts so
-// their globals are this module's exports.
+// The browser build's deterministic rules (js/rules.js, UMD), shared with the
+// Node tests and the dev server.js, evaluated as a classic script so its global
+// is this module's export.
 import { loadClassic } from "starhermit:script";
 
-for (const f of ["js/rules.js", "js/strings.js", "js/i18n.js"]) loadClassic(f);
+loadClassic("js/rules.js");
 
 export type Crop = "turnip" | "carrot" | "pumpkin";
 export type Season = "spring" | "summer" | "autumn";
@@ -45,13 +44,5 @@ export interface RulesApi {
   dailySeed(date: string): string;
   journeyStage(n: number): Config;
 }
-export interface I18nApi {
-  T(key: string, vars?: Record<string, string | number> | null): string;
-  setLocale(tag: string): string;
-  pickLocale(tag: string): string;
-  readonly lang: string;
-  locales: string[];
-}
-const g = globalThis as unknown as { MeadowRules: RulesApi; MSI18N: I18nApi };
+const g = globalThis as unknown as { MeadowRules: RulesApi };
 export const Rules = g.MeadowRules;
-export const I18n = g.MSI18N;

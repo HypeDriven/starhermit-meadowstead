@@ -38,7 +38,6 @@ export const app = {
   drawer: null as null | "left" | "right",
   banner: null as null | { text: string; until: number },
   caption: null as null | { text: string; until: number },
-  toast: null as null | { text: string; until: number },
   lastAchievement: null as string | null,
   /** The results' leaderboard line (a function: it follows a language change). */
   note: null as null | (() => string),
@@ -100,7 +99,12 @@ const ERROR_TEXT: Record<string, string> = {
   "nothing-to-undo": N("Nothing to undo."),
 };
 export function announce(text: string): void { if (text) ui.announce(text.slice(0, 600)); }
-export function toast(text: string): void { app.toast = { text, until: now() + 3.2 }; }
+let toastNow: ui.Toast | null = null;
+/** One at a time, as the old pill (a new one replaces it); a press still reaches the field. */
+export function toast(text: string): void {
+  toastNow?.dismiss();
+  toastNow = ui.toast!(text, { duration: 3.2, style: "toast", dismissible: false });
+}
 function banner(text: string, secs: number): void { app.banner = { text, until: now() + secs }; }
 const KEY_GLYPHS: Record<string, string> = { "Arrow Left": "←", "Arrow Right": "→", "Arrow Up": "↑", "Arrow Down": "↓", Escape: "Esc", Space: "␣", Slash: "?", "/": "?" };
 /** main.js keysFor: an action's effective keys, e.g. "W". */
@@ -281,7 +285,7 @@ export const session = {
     };
     platform.setSnapshot(null);
     // Results show before the (possibly slow) ranked submission; the note fills in after.
-    app.note = this.ranked ? (platform.signedIn() ? () => account().lbPosting : () => T("Submitting score…")) : null;
+    app.note = this.ranked ? (platform.signedIn() ? () => account("leaderboardPosting") : () => T("Submitting score…")) : null;
     showResults();
     if (!this.ranked) return;
     submitLocal(envelope);
@@ -289,7 +293,7 @@ export const session = {
       // Signed in: post the total to the StarHermit high-score board (score-script.js) and show the rank there;
       // the run also stays a personal best on the local board.
       void platform.postLeaderboard(score.total).then((r) => {
-        app.note = () => (!r.posted ? account().lbNotPosted : r.rank ? account().lbRank.replace("{rank}", String(r.rank)) : account().lbPosted);
+        app.note = () => (!r.posted ? account("leaderboardNotPosted") : r.rank ? account("leaderboardRank", { rank: r.rank }) : account("leaderboardPosted"));
       });
       return;
     }
@@ -523,7 +527,7 @@ export function copyInvite(): void {
   if (!link) return;
   let ok = false;
   try { clipboard.writeText(link); ok = true; } catch { ok = false; }
-  toast(ok ? account().copied : account().copyFailed);
+  toast(ok ? account("inviteCopied") : account("inviteFailed"));
 }
 export function copySeed(): void {
   const seed = R.dailySeed(platform.utcDate());
@@ -683,7 +687,7 @@ onStart(() => {
 platform.onOptionsChange(() => render.setPalette(options.palette));
 platform.onMerged(() => { /* screens read platform.progress each frame */ });
 onPreferencesChange((p) => render.setReducedMotion(p.reducedMotion));
-onSessionEnded(() => toast(account().signedOut));
+onSessionEnded(() => toast(account("signedOut")));
 // A hidden window saves a safe snapshot and holds the sound (main.js visibilitychange / pagehide).
 onSuspend(() => { session.snapshotSave(); audio.setSuspended(true); platform.flush(); });
 onResume(() => { audio.setSuspended(false); });
@@ -698,7 +702,6 @@ onUpdate((dt) => {
   const t = now();
   if (app.banner && app.banner.until < t) app.banner = null;
   if (app.caption && app.caption.until < t) app.caption = null;
-  if (app.toast && app.toast.until < t) app.toast = null;
 });
 onRender(() => {
   drawScreens();

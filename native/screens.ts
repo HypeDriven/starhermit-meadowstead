@@ -30,9 +30,9 @@ import {
 interface Layout { lw: number; lh: number; sc: number; ox: number; oy: number; desktop: boolean; portrait: boolean; landscape: boolean }
 function layoutNow(): Layout {
   const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const sa = f.safeArea; // window pixels: the 3D viewport's offset
+  const sc = v.scale, lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const landscape = lh <= 500 && lw > lh;
   const portrait = !landscape && lw <= 700 && lh >= lw;
   return { lw, lh, sc, ox: sa.left, oy: sa.top, desktop: lw >= 1024 && !landscape, portrait, landscape };
@@ -122,7 +122,6 @@ export function drawScreens(): void {
     const max: Partial<Record<Screen, number>> = { modes: 720, help: 640, settings: 480, pause: 420 };
     page(s, L, builders[s]!, max[s] ?? 560);
   }
-  toast(L);
   if (app.focusNext) {
     const age = f.frame - app.openedFrame;
     const target = app.focusNext === "first" ? firstId : app.focusNext;
@@ -171,8 +170,8 @@ function titleScreen(w: number): void {
     { id: "btn-settings-title", text: T("⚙ Settings"), act: () => showScreen("settings", "btn-settings-done") },
   ], w);
   const acct: Btn[] = [];
-  if (!platform.signedIn()) acct.push({ id: "btn-signin", text: account().signIn, act: signIn });
-  if (platform.inviteLink()) acct.push({ id: "btn-invite", text: account().invite, act: copyInvite });
+  if (!platform.signedIn()) acct.push({ id: "btn-signin", text: account("signIn"), act: signIn });
+  if (platform.inviteLink()) acct.push({ id: "btn-invite", text: account("invite"), act: copyInvite });
   if (acct.length) flow("title-row3", acct, w);
 }
 const MODES: [string, string, string, string][] = [
@@ -741,10 +740,4 @@ function tutorialBubble(L: Layout, pf: { x: number; y: number; w: number; h: num
     para(text, w - 42, "p", "tutorial-text");
     button({ id: "btn-tutorial-skip", text: T("Skip tutorial"), act: skipTutorial });
   }, { style: "bubble", width: w, spacing: 10, align: "center" }));
-}
-function toast(L: Layout): void {
-  const t = app.toast;
-  if (!t) return;
-  const w = Math.min(L.lw * 0.92, 420);
-  ui.place("toast", { anchor: "bottom", y: 16 }, () => ui.column("toast-col", () => para(t.text, w - 36, "p", "toast-text", true), { style: "toast", width: w, align: "center" }));
 }

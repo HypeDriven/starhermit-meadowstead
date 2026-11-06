@@ -33,7 +33,7 @@ same decision.
 | `native/quality.ts`, `native/style.ts`, `native/i18n.ts`, `native/classic.ts` | Look per graphics level, UI styles, localization, the classic scripts |
 | `js/rules.js` | Deterministic rules (UMD; shared with `server.js` and the Node tests) |
 | `js/progress.js` | The save document: merge, foreign read, option picking (pure) |
-| `js/strings.js`, `js/i18n.js`, `js/sh-strings.js` | Translation tables and lookup; StarHermit account strings |
+| `assets/strings.json` | Translation tables the engine loads (`strings.load`); account lines are the engine's `starhermit.*` |
 | `assets/` | Title key art, results art, soil tile, baked textures (`assets/textures/`), `ui-style.json` |
 | `sfx/` | Authored one-shots (`manifest.json` lists prompts) |
 | `score-script.js` | Platform server script: range-checks and posts `high-score` |
@@ -285,10 +285,9 @@ crops per stage (sprout cones, leafy stems, clear-coated bulbs and pumpkins) wit
 blooms, selection/hover rings, the ghost disc, burst specks and pollen motes. Lights, the shadow box and the RoomEnvironment (lowered as r183+) are the page's own.
 
 **Graphics levels.** The engine-owned effects (shadows and their map size, AO, bloom, the grade, anti-aliasing)
-are the level's own (`levelSettings()`); Low keeps MSAA where the level asks for none (engine 1.38.0 draws fog
-and translucent overlays off-colour without anti-aliasing). The level's quality tier (Options › Graphics) picks
+are the level's own (`levelSettings()`); Low has no anti-aliasing. The level's quality tier (Options › Graphics) picks
 the old art presets (`native/quality.ts`); at each tier's anchor level (quantum, molecular, terrestrial,
-galactic) the look is: Low — Lambert shading, no shadows, MSAA, plain scenery; Balanced — Standard shading,
+galactic) the look is: Low — Lambert shading, no shadows, no anti-aliasing, plain scenery; Balanced — Standard shading,
 1024 shadows, bloom, grade, FXAA, reflections (RoomEnvironment, intensity 0.28), scenery detail; High —
 physical (clear-coat) shading, 2048 shadows, GTAO, SMAA, pollen motes; Ultra — 4096 shadows, high GTAO,
 full-resolution bloom and AO, MSAA. Tuft and mote budgets grow within a tier with the level's particle budget over the anchor's (≤ 2×). The
@@ -307,14 +306,14 @@ Authored one-shots (`sfx/*.opus`) per event — click, plant, water, harvest (tw
 fulfill, grown, wither, invalid, pause, terminal, season turn, undo, achievement — each with a caption
 (Settings → Captions). Music: seeded pentatonic sine plucks every other 420 ms step and a low note every
 eighth; ambience: a looped filtered-noise wind and seeded bird chirps every 3–9 s. Plucks, wind and chirp are
-rendered into clips once (no live synthesis graph). Buses: music → music; effects and ambience → effects;
+rendered offline into clips once at start (OfflineAudioContext). Buses: music → music; effects and ambience → effects;
 the click → interface. Volumes, mute and the voice limit are the runtime's Options. A hidden window holds the
 music and ambience.
 
 ## 10. Localization
 
 Nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT), English source strings as keys
-(`js/strings.js`; en-GB, es-ES and fr-CA list differences). The language is the runtime's interface language
+(`assets/strings.json`, the engine's `strings`; en-GB, es-ES and fr-CA list differences). The language is the runtime's interface language
 (Options › Language, else the account's or device's); every string is drawn through `T()` each frame, so a
 change shows at once. `tests/i18n.test.mjs` checks every key the client shows is translated, placeholders and
 markup survive, and no table keeps unused keys.
@@ -355,7 +354,7 @@ deuteranopia, protanopia, tritanopia, high-contrast scene tints), left-handed to
 
 ## 13. Technical architecture
 
-`native/main.ts` loads `js/rules.js`, `js/strings.js` and `js/i18n.js` as classic scripts (`loadClassic`), so
+`native/main.ts` loads `js/rules.js` as a classic script (`loadClassic`), so
 the shipped rules are the ones Node tests and `server.js` run. The session keeps the command log and builds
 the old replay envelope (hashes, config, commands) at the end; the local board replays it before recording.
 Command ids use the wall clock (uniqueness only); the rules are seeded and deterministic. Rendering reads

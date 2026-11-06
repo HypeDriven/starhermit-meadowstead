@@ -37,7 +37,7 @@ export function initStyles(): void {
       text: { color: "$ink" }, minHeight: 44,
       parts: { box: { background: "$panel", border: { width: 2, color: "$soft" }, radius: 4 }, mark: { background: "$accent" } },
     },
-    select: { background: "$panel", border: { width: 1, color: "$soft" }, radius: 8, text: { color: "$ink" }, minHeight: 40 },
+    select: { background: "$panel", border: { width: 1, color: "$soft" }, radius: 8, text: { color: "$ink" } },
     textField: { background: "$panel", border: { width: 1, color: "$soft" }, radius: 8, text: { color: "$ink" }, minHeight: 44 },
     progress: { parts: { track: { background: "#24301e1a", radius: 6 }, fill: { background: "$accent", radius: 6 } } },
     scrollArea: { parts: { bar: { background: "#24301e55", radius: 4 } } },
