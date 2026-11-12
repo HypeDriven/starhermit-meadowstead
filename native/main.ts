@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Meadowstead on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (js/rules.js) are the browser build's,
@@ -703,11 +704,15 @@ onUpdate((dt) => {
   if (app.banner && app.banner.until < t) app.banner = null;
   if (app.caption && app.caption.until < t) app.caption = null;
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   drawScreens();
   fieldInput();
   if (session.state) render.sync(session.state, R.seasonAt(session.state.tick));
   render.update(frameDt);
-});
+}));
 
 export { plain };
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

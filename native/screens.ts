@@ -1,3 +1,6 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+// localization-runtime:attached
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM shell (index.html + style.css + js/main.js) as
 // starhermit:ui, built every frame around the 3D field: the status bar (season,
 // time, coins, score, mode, player and cloud-save chips, the drawer toggles and
@@ -11,7 +14,20 @@
 // rails become drawers), portrait phone (≤ 700 px wide: three tools a row,
 // smaller mirror) and landscape phone (≤ 500 px tall: the status as a left
 // column, the tools as a right column).
-import { frame, openMenu } from "starhermit:engine";
+// The browser build's DOM shell (index.html + style.css + js/main.js) as
+// starhermit:ui, built every frame around the 3D field: the status bar (season,
+// time, coins, score, mode, player and cloud-save chips, the drawer toggles and
+// Pause), the left rail (objective with its progress bar, orders with Fulfill),
+// the right rail (inventory, crafting, scores), the playfield with the hint
+// banner, the caption line and the accessible plot mirror, the tool tray, the
+// tutorial bubble, the toast, and the screens (title over the key art, modes,
+// setup, results, pause, settings, help, leaderboards, friends, profile,
+// welcome back). The browser's media queries are layouts picked by the
+// window's logical size: desktop (≥ 1024 px: rails at the sides), compact (the
+// rails become drawers), portrait phone (≤ 700 px wide: three tools a row,
+// smaller mirror) and landscape phone (≤ 500 px tall: the status as a left
+// column, the tools as a right column).
+import { frame } from "starhermit:engine";
 import { requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -57,13 +73,13 @@ function button(b: Btn, width: number | null = null): boolean {
   const wraps = inner != null && tw(b.text, cls, "button") > width!;
   if (b.sub || wraps) {
     opts.content = () => {
-      if (wraps) ui.style({ text: { align: "center", weight: "600" } }).paragraph(b.text, inner!);
-      else ui.style(BOLD).label(b.text);
-      if (b.sub) ui.style("fine", { text: { align: "center", weight: "600" } }).label(b.sub);
+      if (wraps) ui.style(__l10nStyle({ text: { align: "center", weight: "600" } })).paragraph(b.text, inner!);
+      else ui.style(__l10nStyle(BOLD)).label(b.text);
+      if (b.sub) ui.style(__l10nStyle("fine"), __l10nStyle({ text: { align: "center", weight: "600" } })).label(b.sub);
     };
   }
   if (!firstId && !b.disabled) firstId = b.id;
-  const hit = ui.style(cls, width != null ? { width } : {}).id(b.id).button(b.text, opts);
+  const hit = ui.style(__l10nStyle(cls), __l10nStyle(width != null ? { width } : {})).id(b.id).button(b.text, opts);
   if (hit && !fresh(0)) b.act();
   return hit;
 }
@@ -90,7 +106,7 @@ function para(text: string, width: number, cls = "p", id?: string, center = fals
   if (!text) return;
   const styles: (string | ui.Style)[] = [cls];
   if (center) styles.push({ text: { align: "center" } });
-  let u = ui.style(...styles);
+  let u = ui.style(...__l10nStyle(styles));
   if (id) u = u.id(id);
   if (tw(text, styles) <= width) u.label(text);
   else u.paragraph(text, width);
@@ -98,8 +114,8 @@ function para(text: string, width: number, cls = "p", id?: string, center = fals
 function heading(cls: string, text: string, width: number, center = true): void {
   const styles: (string | ui.Style)[] = [cls];
   if (center) styles.push({ text: { align: "center" } });
-  if (tw(text, styles, "heading") <= width) ui.style(...styles).heading(text);
-  else ui.style(...styles).paragraph(text, width);
+  if (tw(text, styles, "heading") <= width) ui.style(...__l10nStyle(styles)).heading(text);
+  else ui.style(...__l10nStyle(styles)).paragraph(text, width);
 }
 
 // ------------------------------------------------------------------ the frame
@@ -190,10 +206,10 @@ function modesScreen(w: number): void {
   ui.grid("mode-grid", () => {
     for (const [mode, icon, name, desc] of MODES) {
       if (!firstId) firstId = `mode-${mode}`;
-      const hit = ui.style("mode", { width: cw }).id(`mode-${mode}`).button(T(name), {
+      const hit = ui.style(__l10nStyle("mode"), __l10nStyle({ width: cw })).id(`mode-${mode}`).button(T(name), {
         content: () => ui.column(`mode-${mode}-face`, () => {
-          ui.style("mode-icon").label(icon);
-          ui.style("mode-name").label(T(name));
+          ui.style(__l10nStyle("mode-icon")).label(icon);
+          ui.style(__l10nStyle("mode-name")).label(T(name));
           para(T(desc), cw - 36, "mode-desc", undefined, true);
         }, { align: "center", width: cw - 36, spacing: 4 }),
       });
@@ -252,7 +268,7 @@ function resultsScreen(w: number, L: Layout): void {
   heading("h1", T("Results"), w);
   if (L.lh > 640) {
     const aw = Math.min(420, w, L.lw * 0.8), ah = aw * 576 / 1024;
-    ui.style("results-art", { width: aw, height: ah, background: [{ image: "assets/results-harvest.webp", size: "cover" }, "#cfe0bf"] })
+    ui.style(__l10nStyle("results-art"), __l10nStyle({ width: aw, height: ah, background: [{ image: "assets/results-harvest.webp", size: "cover" }, "#cfe0bf"] }))
       .column("results-art", () => undefined, { width: aw, height: ah });
   }
   para(resultsHeadline(), w, "headline", "results-headline", true);
@@ -274,7 +290,7 @@ function scoreRow(id: string, k: string, v: string, w: number, vcls: string): vo
   ui.row(id, () => {
     para(k, w - 100, "score-k");
     ui.spacer();
-    ui.style(vcls).id(`${id}-v`).label(v);
+    ui.style(__l10nStyle(vcls)).id(`${id}-v`).label(v);
   }, { width: w, style: "score-row" });
 }
 function pauseScreen(w: number): void {
@@ -307,7 +323,7 @@ function settingsScreen(w: number): void {
   heading("h1", T("Settings"), w);
   para(T("Sound, graphics, language, reduced motion, high contrast and larger text are in the StarHermit Options."), w, "fine", "options-note", true);
   flow("options-row", [
-    { id: "btn-options", text: T("Audio & graphics"), act: () => openMenu() },
+    { id: "btn-options", text: T("Audio & graphics"), act: () => __l10nOptions() },
     { id: "btn-rebind", text: T("Keyboard bindings"), act: () => requestRebind() },
   ], w);
   choice("set-palette", T("Color palette"), PALETTES, options.palette, (v) => platform.setOption("palette", v), w);
@@ -400,7 +416,7 @@ function leaderboardScreen(w: number): void {
 function listRow(id: string, left: string, right: string, w: number, bold = false): void {
   ui.row(id, () => {
     para(left, w - (right ? 110 : 24), "row-text");
-    if (right) { ui.spacer(); ui.style(bold ? "score-k" : "row-text").label(right); }
+    if (right) { ui.spacer(); ui.style(__l10nStyle(bold ? "score-k" : "row-text")).label(right); }
   }, { width: w, style: "lb-row" });
 }
 const fr = { rows: null as { name: string; score: string }[] | null, token: 0, name: "" };
@@ -502,7 +518,7 @@ function chips(): Chip[] {
 const chipW = (c: Chip): number => c.btn ? tw(c.text, "btn", "button") + 4 : tw(c.text, "chip-text") + 26;
 function chip(c: Chip, width: number | null = null): void {
   if (c.btn) {
-    const hit = ui.style("btn", width != null ? { width } : {}).id(c.id).button(c.aria ?? c.text, c.aria ? { content: () => ui.style(BOLD).label(c.text) } : {});
+    const hit = ui.style(__l10nStyle("btn"), __l10nStyle(width != null ? { width } : {})).id(c.id).button(c.aria ?? c.text, c.aria ? { content: () => ui.style(__l10nStyle(BOLD)).label(c.text) } : {});
     if (hit && !fresh(0)) { c.btn(); if (pointerActivation()) ui.setFocus(null); }
     return;
   }
@@ -526,12 +542,12 @@ function toolWidth(b: ToolBtn, kbd: boolean): number { return tw(b.text, "tool",
 function toolButton(b: ToolBtn, width: number | null, kbd: boolean): void {
   const sel = !!b.tool && toolKey(app.tool) === b.tool;
   const opts: ui.ButtonOptions = { content: () => ui.row(`${b.id}-face`, () => {
-    ui.style(BOLD).label(b.text);
-    if (kbd) ui.style(sel ? "kbd-on" : "kbd").label(b.kbd);
+    ui.style(__l10nStyle(BOLD)).label(b.text);
+    if (kbd) ui.style(__l10nStyle(sel ? "kbd-on" : "kbd")).label(b.kbd);
   }, { spacing: 6, align: "center" }) };
   if (b.disabled) opts.disabled = true;
   if (b.tool) opts.selected = sel;
-  const hit = ui.style("tool", width != null ? { width } : {}).id(b.id).button(b.text, opts);
+  const hit = ui.style(__l10nStyle("tool"), __l10nStyle(width != null ? { width } : {})).id(b.id).button(b.text, opts);
   if (hit && !fresh(0)) { b.act(); if (pointerActivation()) ui.setFocus(null); }
 }
 
@@ -632,8 +648,8 @@ function leftRail(w: number): void {
       ui.row(`order-${o.id}`, () => {
         para(`${needs} → 🪙${o.reward}`, iw - fw - 22, "row-text");
         ui.spacer();
-        const hit = ui.style("small-btn").id(`fulfill-${o.id}`).button(T("Fulfill order for {needs}, reward {reward} coins", { needs, reward: o.reward }), {
-          disabled: !can, content: () => ui.style(BOLD).label(T("Fulfill")),
+        const hit = ui.style(__l10nStyle("small-btn")).id(`fulfill-${o.id}`).button(T("Fulfill order for {needs}, reward {reward} coins", { needs, reward: o.reward }), {
+          disabled: !can, content: () => ui.style(__l10nStyle(BOLD)).label(T("Fulfill")),
         });
         if (hit && !fresh(0)) { session.command({ type: "fulfill", orderId: o.id }); if (pointerActivation()) ui.setFocus(null); }
       }, { width: iw, style: can ? "order-ok" : "order", align: "center", spacing: 6 });
@@ -655,8 +671,8 @@ function rightRail(w: number): void {
       const can = R.check(st, { type: "craft", recipe: key }).ok;
       const needs = Object.entries(r.needs).map(([k, n]) => `${n} ${itemName(k)}`).join(" + ");
       const text = `${itemName(key)} (${needs})`;
-      const hit = ui.style("btn", { width: iw }).id(`craft-${key}`).button(T("Craft {name} from {needs}", { name: itemName(key), needs }), {
-        disabled: !can, content: () => ui.style({ text: { align: "center", weight: "600" } }).paragraph(text, iw - 36),
+      const hit = ui.style(__l10nStyle("btn"), __l10nStyle({ width: iw })).id(`craft-${key}`).button(T("Craft {name} from {needs}", { name: itemName(key), needs }), {
+        disabled: !can, content: () => ui.style(__l10nStyle({ text: { align: "center", weight: "600" } })).paragraph(text, iw - 36),
       });
       if (hit && !fresh(0)) { session.command({ type: "craft", recipe: key }); if (pointerActivation()) ui.setFocus(null); }
     }
@@ -713,8 +729,8 @@ function playfieldOverlays(pf: { x: number; y: number; w: number; h: number }, L
       const icon = !c ? "▫" : c.ready ? "🌟" : c.watered ? "💧" : "🌱";
       const sel = i === app.selectedPlot;
       const label = plotLabel(i);
-      const hit = ui.style(sel ? "plot-sel" : "plot", { width: cw, height: cellH }).id(`plot-${i + 1}`).button(sel ? T("{label}, selected", { label }) : label, {
-        content: () => { ui.style("plot-icon", { text: { align: "center" } }).label(icon); ui.style("plot-num", { text: { align: "center" } }).label(String(i + 1)); },
+      const hit = ui.style(__l10nStyle(sel ? "plot-sel" : "plot"), __l10nStyle({ width: cw, height: cellH })).id(`plot-${i + 1}`).button(sel ? T("{label}, selected", { label }) : label, {
+        content: () => { ui.style(__l10nStyle("plot-icon"), __l10nStyle({ text: { align: "center" } })).label(icon); ui.style(__l10nStyle("plot-num"), __l10nStyle({ text: { align: "center" } })).label(String(i + 1)); },
       });
       if (hit && !fresh(0)) { selectPlot(i); activatePlot(i); if (pointerActivation()) ui.setFocus(null); }
     }
@@ -724,7 +740,7 @@ function playfieldOverlays(pf: { x: number; y: number; w: number; h: number }, L
     const text = "♪ " + T(cap.text);
     const w = tw(text, "caption-text") + 20;
     ui.place("caption-line", { anchor: "top-start", x: pf.x + pf.w - 8 - w, y: pf.y + pf.h - 8 - 24 }, () =>
-      ui.row("caption-row", () => ui.style("caption-text").label(text), { style: "caption" }));
+      ui.row("caption-row", () => ui.style(__l10nStyle("caption-text")).label(text), { style: "caption" }));
   }
 }
 /** The Learn lesson's bubble (index.html #tutorial-bubble), over the field just above the tray and the plot
