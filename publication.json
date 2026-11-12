@@ -1,0 +1,98 @@
+{
+  "game": {
+    "id": "d74658b0-4c10-4d3f-8288-e04c341f5a81",
+    "displayName": "Meadowstead",
+    "hosting": {
+      "hostingEnabled": true,
+      "hostedUrl": "https://d74658b0-4c10-4d3f-8288-e04c341f5a81.starhermit.com/index.html",
+      "deployStatus": "live",
+      "pinnedCommitSha": null,
+      "deployedCommitSha": null,
+      "deployError": null,
+      "deployedAt": "2026-11-12T08:15:40.396356+00:00",
+      "externalLaunchUrl": null,
+      "engineVersion": "1.38.0",
+      "deployWarning": null
+    }
+  },
+  "publishedAt": "2026-11-12T08:15:45.473Z",
+  "sourceCommit": "7c1dc86ec49ac83f0713a0af3f3beb89a15be368",
+  "bytesReceived": 3146225,
+  "archiveSha256": "f4365277e404ec90a4f5a2238b237c5226834ff2a04f261ecbe9cd61dcd1a049",
+  "indexSha256": "d98f95c7c85dae9770c2f2d3c94e20e95f66e7225c5e65768e85e5eb9279fd09",
+  "result": {
+    "clientPublished": true,
+    "serverImageLoaded": false,
+    "imageDigest": null,
+    "bytesReceived": 3146225,
+    "mode": "replace",
+    "filesRemoved": 0,
+    "engineVersion": "1.38.0",
+    "deployWarning": null
+  },
+  "liveVerification": {
+    "at": "2026-11-12T08:15:45.473Z",
+    "files": [
+      {
+        "file": "starhermit-files.json",
+        "sha256": "d98f95c7c85dae9770c2f2d3c94e20e95f66e7225c5e65768e85e5eb9279fd09",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Japanese.otf",
+        "sha256": "b81609244694911a43b2455954904cf41c51cf410f7403138cf5119ae84b10ad",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Khmer.ttf",
+        "sha256": "668613f67df89fdf63979300ef393ad04cea0752e6da69e2e93c9a84fe92e5fd",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/SimplifiedChinese.otf",
+        "sha256": "10f22e682789a1e4d14371f1fc5f62c41e3faab1b693e68e763174195dbaaaab",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Tamil.ttf",
+        "sha256": "dcd717b1412687e0895fea16e95fb04f3fefd505b9435de479127f760a8c7fc6",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/TraditionalChinese.otf",
+        "sha256": "0c28a048af900f78aa165c539006cf55308f71bf7399e558118a00195335c392",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/common.json",
+        "sha256": "4a74c04beac43695e363a5599b09111c41aaf0de983cd5b999e691d257523f0a",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/fonts.json",
+        "sha256": "37beaea0dba54c9f2c45995cbf9fd19fad21719d701718c41d7e58dd7748ca13",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/locales.json",
+        "sha256": "c8cfcfadc5a499bc2e9e7335190987be6c19760c809652161c21960ec70b9333",
+        "status": 200
+      },
+      {
+        "file": "assets/strings.json",
+        "sha256": "5bbd49a0c7882f8beed6c4b1bbe37393b69d1a5f9671fe0e097fc15721e06dcc",
+        "status": 200
+      },
+      {
+        "file": "index.html",
+        "sha256": "9c907a5fb0d399bec2bae0d94f0cc5998466d2e13489d48527e2105f4e8050f5",
+        "status": 200
+      },
+      {
+        "file": "starhermit.txt",
+        "sha256": "ffbfa3f2263c28149f7605b5a43f6ad6973d41616175c2329f91eca09a0e4123",
+        "status": 200
+      }
+    ]
+  }
+}
