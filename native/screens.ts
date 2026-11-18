@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 // localization-runtime:attached
 import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
@@ -119,7 +120,7 @@ function heading(cls: string, text: string, width: number, center = true): void 
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   firstId = null;
@@ -756,4 +757,11 @@ function tutorialBubble(L: Layout, pf: { x: number; y: number; w: number; h: num
     para(text, w - 42, "p", "tutorial-text");
     button({ id: "btn-tutorial-skip", text: T("Skip tutorial"), act: skipTutorial });
   }, { style: "bubble", width: w, spacing: 10, align: "center" }));
+}
+
+export function drawScreens(): void {
+  if (!(app.stack.includes("help"))) { drawScreensImmediate(); return; }
+  const actions = ["left","right","up","down","activate","turnip","carrot","pumpkin","water","harvest","wait","undo","pause","hint","camera","back"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }
