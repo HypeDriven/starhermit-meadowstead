@@ -16,7 +16,7 @@ same decision.
 | Genre | Turn-based resource puzzle / cozy farm management |
 | Players | 1 (asynchronous competition via shared seeds and leaderboards) |
 | Session length | 2–6 minutes (Journey stage), 6–10 minutes (Daily, Score Chase) |
-| Platforms | StarHermit engine script game (engine 1.44.1, `engine.minor=44`): natively in the StarHermit client, in browsers through the engine's web runtime; keyboard, mouse, touch and gamepad |
+| Platforms | StarHermit engine script game (engine 1.47.0, `engine.minor=47`): natively in the StarHermit client, in browsers through the engine's web runtime; keyboard, mouse, touch and gamepad |
 | Rendering | `starhermit:scene` (the old three.js scene, ported) behind a `starhermit:ui` HUD, plus an accessible plot mirror that plays the whole game |
 | Persistence | The game's save (`starhermit:storage` `saves`: on the device and in the player's cloud slot), engine settings for the game's options |
 
@@ -24,7 +24,7 @@ same decision.
 
 | Path | Role |
 |---|---|
-| `starhermit.txt` | Manifest: entry `native/main.ts`, engine 1.44.1 / minor 32, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` |
+| `starhermit.txt` | Manifest: entry `native/main.ts`, engine 1.47.0 / minor 32, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` |
 | `native/main.ts` | Entry: session (commands, undo, replay log and envelope, snapshot, tutorial, achievements, journey/daily progress, local board, leaderboard post), screen stack, input |
 | `native/screens.ts` | Every screen and the play layout (status bar, rails or drawers, tool tray, plot mirror, banners) |
 | `native/render.ts` | The homestead scene, camera fitted into the playfield, picking |
@@ -408,8 +408,12 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 <!-- regional-localization:end -->
 
-## Engine 1.44.1
+## Engine 1.47.0
 
-Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
+
+Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
