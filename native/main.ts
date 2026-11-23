@@ -1,3 +1,4 @@
+import { showCursor } from "./cursor.ts";
 import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Meadowstead on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
@@ -676,6 +677,7 @@ function applyLook(): void {
 audio.onCaption((text) => { if (options.captions) app.caption = { text, until: now() + 2 }; });
 
 onStart(() => {
+  showCursor();
   initStyles();
   platform.initPlatform();
   audio.loadSfx();
