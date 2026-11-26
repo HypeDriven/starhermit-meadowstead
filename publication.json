@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:01:04.137583+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-23T17:02:08.709621+00:00",
+    "coverArtUpdatedAt": "2026-11-26T13:00:17.015879+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-23T17:02:08.700319+00:00",
+      "deployedAt": "2026-11-26T13:00:17.004307+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.47.0",
+      "engineVersion": "1.50.0",
       "deployWarning": null
     },
     "description": "Plant, water, harvest, craft, and deliver goods while making every turn count on a cozy homestead.",
@@ -36,10 +36,10 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-23T17:02:08.815Z",
-  "sourceCommit": "4673cbcc851b17208c92de0c41f3bd2226520beb",
+  "publishedAt": "2026-11-26T13:00:17.276Z",
+  "sourceCommit": "2ccae2e562a0f38fbfe5b77558812e76c67e75d7",
   "bytesReceived": 6421274,
-  "archiveSha256": "926ed84561a65d0e20d7428b9e83e899da68e8522becebe360383d900af8a051",
+  "archiveSha256": "4c6b50e1f7fe8cb6d9faac9f7e0c21bc2c13589ceb1419661b2fe9ae3a254b77",
   "indexSha256": "ba7f240f5624860c89a9022c8b9240d6df2e470e9d33a21907dc3f1b4185d091",
   "result": {
     "clientPublished": true,
@@ -48,7 +48,7 @@
     "bytesReceived": 6421274,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.47.0",
+    "engineVersion": "1.50.0",
     "deployWarning": null
   },
   "liveVerification": {
