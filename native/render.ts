@@ -722,6 +722,7 @@ export function resetCamera(): void { camera.position.copy(CAM_POS); camera.look
 const raycaster = new Raycaster();
 raycaster.layers.set(LAYER_GAME);
 const ndc = new Vector2();
+const plotSoils: Mesh[] = [];
 /** The plot under a window point (px), or -1. */
 export function plotAt(x: number, y: number): number {
   const f = frame();
@@ -729,7 +730,9 @@ export function plotAt(x: number, y: number): number {
   if (x < pf.x || y < pf.y || x > pf.x + pf.w || y > pf.y + pf.h) return -1;
   ndc.set((x / f.width) * 2 - 1, -(y / f.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hits = raycaster.intersectObjects(plots.map((p) => p.soil), false);
+  plotSoils.length = plots.length;
+  for (let i = 0; i < plots.length; i++) plotSoils[i] = plots[i]!.soil;
+  const hits = raycaster.intersectObjects(plotSoils, false);
   return hits.length ? (hits[0]!.object.userData.plotIndex as number) : -1;
 }
 

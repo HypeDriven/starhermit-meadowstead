@@ -55,7 +55,6 @@ export function loadSfx(): void {
   for (const name of new Set(Object.values(SFX).flat())) {
     loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
   }
-  renderClips();
 }
 
 /** A game event's sample (once loaded) and its caption. */
@@ -138,7 +137,17 @@ export function setSuspended(on: boolean): void { suspended = on; }
 
 /** Each frame once the mixer runs and the clips are rendered: the wind by state and the music's and
  * chirps' next steps by mixer time. */
+let __bedsStarted = false;
+function startBeds(): void {
+  if (__bedsStarted) return;
+  __bedsStarted = true;
+  void (async () => {
+    renderClips();
+  })();
+}
+
 export function update(): void {
+  startBeds();
   if (context.state !== "running" || !wind || !chirp || plucks.size < SCALE.length || lows.size < 4) return;
   try {
     const want = started && !suspended;
